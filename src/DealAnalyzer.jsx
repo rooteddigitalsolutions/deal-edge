@@ -157,6 +157,7 @@ export default function DealAnalyzerV2() {
   const updateProp = (k, v) => setProperty(prev => ({ ...prev, [k]: v }));
 
   const [rehabLevel, setRehabLevel] = useState("moderate");
+  const [investorNotes, setInvestorNotes] = useState("");
   const [financing, setFinancing] = useState("conventional");
   const [downPct, setDownPct] = useState(20);
   const [rate, setRate] = useState(7.0);
@@ -277,6 +278,7 @@ HOA: ${property.hoaFees ? "$" + property.hoaFees + "/mo" : "None"}
 Annual Taxes: ${property.taxesAnnual ? "$" + property.taxesAnnual : "Estimate based on Knox County rates"}
 Description: ${property.description || "None provided"}
 Features: ${property.features.length > 0 ? property.features.join(", ") : "None noted"}
+${investorNotes ? `\nINVESTOR'S OWN NOTES (factor these heavily into your analysis):\n${investorNotes}` : ""}
 
 Investor's Selected Rehab Level: ${condLabel}
 Financing: ${financing === "conventional" ? "Conventional 30yr" : financing === "hard_money" ? "Hard Money 12mo" : "Cash"}
@@ -723,6 +725,21 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                 )}
               </div>
             )}
+
+            {/* Investor Notes */}
+            <div className="da2-section">
+              <div className="da2-section-title">Your Intel</div>
+              <div style={{ fontSize: 11, color: "#5a5549", marginBottom: 10 }}>
+                Anything you know that the listing doesn't say — condition details, seller motivation, neighborhood context, recent sales nearby, inspection notes, planned development, etc.
+              </div>
+              <textarea
+                className="da2-input"
+                style={{ minHeight: 100, resize: "vertical", lineHeight: 1.6 }}
+                placeholder="e.g. Drove by — roof looks rough, gutters hanging. Neighbor said owner is relocating for work and wants a quick close. Two flips on same street sold for $280k last year. Zoned for ADU potential..."
+                value={investorNotes}
+                onChange={e => setInvestorNotes(e.target.value)}
+              />
+            </div>
 
             <button className="da2-btn da2-btn-primary" onClick={() => setStep("options")}
               disabled={!property.address || !property.askingPrice || !property.sqft}
