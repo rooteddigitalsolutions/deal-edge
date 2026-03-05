@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import DealAnalyzerV2 from "./DealAnalyzer.jsx";
+import PropertyScanner from "./PropertyScanner.jsx";
 
 const TOOLS = [
   {
@@ -450,7 +451,7 @@ export default function DealEdgeSite() {
               {TOOLS.map(tool => {
                 const badge = STATUS_BADGES[tool.status];
                 return (
-                  <div key={tool.id} className="dl-tool-card" onClick={() => navigate("tools")}>
+                  <div key={tool.id} className="dl-tool-card" onClick={() => navigate(tool.status === "live" || tool.status === "beta" ? tool.id : "tools")}>
                     <div className="dl-tool-card-head">
                       <div className="dl-tool-icon">{tool.icon}</div>
                       <span className="dl-tool-status" style={{
@@ -536,9 +537,9 @@ export default function DealEdgeSite() {
                         <span style={{ color: "#e8890c", fontSize: 14 }}>›</span> {f}
                       </div>
                     ))}
-                    {tool.status === "live" && (
-                      <button className="dl-btn-primary" onClick={() => navigate("deal-analyzer")} style={{ marginTop: 12, width: "100%", padding: 12 }}>
-                        Launch Tool →
+                    {(tool.status === "live" || tool.status === "beta") && (
+                      <button className="dl-btn-primary" onClick={() => navigate(tool.id)} style={{ marginTop: 12, width: "100%", padding: 12 }}>
+                        {tool.status === "beta" ? "Try Beta →" : "Launch Tool →"}
                       </button>
                     )}
                   </div>
@@ -625,6 +626,13 @@ export default function DealEdgeSite() {
       {page === "deal-analyzer" && (
         <div style={{ paddingTop: 64 }}>
           <DealAnalyzerV2 />
+        </div>
+      )}
+
+      {/* ═══ PROPERTY SCANNER PAGE ═══ */}
+      {page === "property-scanner" && (
+        <div style={{ paddingTop: 64 }}>
+          <PropertyScanner />
         </div>
       )}
 
