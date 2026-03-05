@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import DealAnalyzerV2 from "./DealAnalyzer.jsx";
 
 const TOOLS = [
   {
@@ -376,7 +377,7 @@ export default function DealEdgeSite() {
             <button key={l.id} className={`dl-nav-link ${page === l.id ? "active" : ""}`}
               onClick={() => navigate(l.id)}>{l.label}</button>
           ))}
-          <button className="dl-nav-cta" onClick={() => navigate("contact")}>Get Early Access</button>
+          <button className="dl-nav-cta" onClick={() => navigate("deal-analyzer")}>Try Deal Analyzer</button>
         </div>
         <button className={`dl-hamburger ${mobileMenu ? "open" : ""}`}
           onClick={() => setMobileMenu(!mobileMenu)}>
@@ -411,8 +412,8 @@ export default function DealEdgeSite() {
               AI tools built for real estate investors, agents, and contractors. Analyze deals, score properties, estimate rehab costs, and generate investor-ready reports — in seconds, not hours.
             </p>
             <div className="dl-hero-btns anim-up anim-d3">
-              <button className="dl-btn-primary" onClick={() => navigate("tools")}>Explore the Tools</button>
-              <button className="dl-btn-outline" onClick={() => navigate("about")}>Meet the Builder</button>
+              <button className="dl-btn-primary" onClick={() => navigate("deal-analyzer")}>Try the Deal Analyzer</button>
+              <button className="dl-btn-outline" onClick={() => navigate("tools")}>Explore All Tools</button>
             </div>
 
             {/* Floating stat badges */}
@@ -536,7 +537,7 @@ export default function DealEdgeSite() {
                       </div>
                     ))}
                     {tool.status === "live" && (
-                      <button className="dl-btn-primary" style={{ marginTop: 12, width: "100%", padding: 12 }}>
+                      <button className="dl-btn-primary" onClick={() => navigate("deal-analyzer")} style={{ marginTop: 12, width: "100%", padding: 12 }}>
                         Launch Tool →
                       </button>
                     )}
@@ -618,6 +619,13 @@ export default function DealEdgeSite() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* ═══ DEAL ANALYZER PAGE ═══ */}
+      {page === "deal-analyzer" && (
+        <div style={{ paddingTop: 64 }}>
+          <DealAnalyzerV2 />
+        </div>
       )}
 
       {/* ═══ CONTACT PAGE ═══ */}
