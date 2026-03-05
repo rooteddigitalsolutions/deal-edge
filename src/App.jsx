@@ -8,7 +8,7 @@ const TOOLS = [
     status: "live",
     tagline: "Paste a link. Get the full breakdown.",
     desc: "Drop in any Zillow, Redfin, or MLS listing URL and the AI extracts every detail — then runs a complete investment analysis across Buy & Hold, Flip, and BRRRR strategies. Includes rehab cost estimates at 4 levels, ARV comps, rental cash flow projections, and an investor pitch sheet you can share.",
-    features: ["Auto-extract from listing URLs", "4-level rehab scenario comparison", "Buy & Hold / Flip / BRRRR scoring", "Investor-ready pitch summary", "Knoxville market data built in"],
+    features: ["Auto-extract from listing URLs", "4-level rehab scenario comparison", "Buy & Hold / Flip / BRRRR scoring", "Investor-ready pitch summary", "Market-specific data nationwide"],
     icon: "⚡",
     color: "#e8890c",
   },
@@ -27,8 +27,8 @@ const TOOLS = [
     name: "SOW Builder",
     status: "coming",
     tagline: "Describe the job. Get a professional scope.",
-    desc: "Contractors describe a rehab conversationally — \"gut reno, 3/2 ranch, 1,400 sqft, needs new HVAC and full kitchen\" — and the AI generates a structured scope of work with line items, Knoxville-market cost ranges, and a timeline. Exportable as PDF for investors and agents.",
-    features: ["Conversational input", "Line-item cost breakdown", "Knoxville labor & material rates", "PDF export", "Timeline estimates"],
+    desc: "Contractors describe a rehab conversationally — \"gut reno, 3/2 ranch, 1,400 sqft, needs new HVAC and full kitchen\" — and the AI generates a structured scope of work with line items, market-specific cost ranges, and a timeline. Exportable as PDF for investors and agents.",
+    features: ["Conversational input", "Line-item cost breakdown", "Local labor & material rates", "PDF export", "Timeline estimates"],
     icon: "📋",
     color: "#c06a08",
   },
@@ -424,7 +424,7 @@ export default function DealEdgeSite() {
               {[
                 { val: "4", lbl: "Investment Strategies Scored" },
                 { val: "30s", lbl: "Listing to Full Analysis" },
-                { val: "Knox", lbl: "Market Data Built In" },
+                { val: "US", lbl: "Markets Nationwide" },
               ].map((s, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{
@@ -478,10 +478,10 @@ export default function DealEdgeSite() {
             <div style={{ maxWidth: 600, margin: "0 auto" }}>
               <div className="dl-section-eyebrow" style={{ justifyContent: "center" }}>Early Access</div>
               <h2 className="dl-section-title" style={{ marginBottom: 16 }}>
-                Built in Knoxville. Expanding everywhere.
+                Built in Knoxville. Works everywhere.
               </h2>
               <p style={{ fontSize: 15, color: "#7a756c", lineHeight: 1.7, marginBottom: 32 }}>
-                DealEdge is currently tuned for the Knoxville, TN market with local rehab costs, rent data, and neighborhood intelligence baked in. National expansion is on the roadmap.
+                DealEdge works with any US market — paste a listing from anywhere and get a full analysis with local rehab costs, rent projections, and market context. Extra-detailed intelligence for Knoxville, TN properties where we have deep local benchmarks.
               </p>
               <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
                 <button className="dl-btn-primary" onClick={() => navigate("contact")}>Request Early Access</button>
@@ -589,7 +589,7 @@ export default function DealEdgeSite() {
                   I'm the founder of <strong>Rooted Digital Solutions</strong>, a Knoxville-based digital consultancy where I build websites, marketing automation, and AI-powered tools for small businesses. I've spent <strong>over a decade as an entrepreneur and small business owner</strong> — and that experience shows up in how I build: practical first, impressive second.
                 </p>
                 <p>
-                  DealEdge combines my background in <strong>marketing and business strategy</strong> with modern AI to give real estate professionals tools that actually make them money. Every tool is built with Knoxville market data — real rehab costs, real rent ranges, real neighborhood dynamics — because generic doesn't cut it when real money is on the line.
+                  DealEdge combines my background in <strong>marketing and business strategy</strong> with modern AI to give real estate professionals tools that actually make them money. Every tool adapts to your local market — real rehab costs, real rent ranges, real neighborhood dynamics — because generic doesn't cut it when real money is on the line.
                 </p>
                 <p>
                   Whether you're an investor sizing up your next BRRRR, an agent who wants to impress investor clients with polished deal analysis, or a contractor building scopes of work — these tools are designed for how you actually work.

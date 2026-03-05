@@ -52,9 +52,15 @@ Extract and return ONLY valid JSON (no markdown, no backticks):
 If you cannot find the exact listing, search for the address and fill in what you can find. Be accurate — do not fabricate data.`;
 
 /* ─── ANALYSIS PROMPT ─── */
-const ANALYSIS_SYSTEM = `You are a real estate investment analyst specializing in the Knoxville, Tennessee market. Provide detailed, realistic deal analysis.
+const ANALYSIS_SYSTEM = `You are an expert real estate investment analyst with deep knowledge of markets across the United States. Provide detailed, realistic deal analysis tailored to the specific market the property is in.
 
-KNOXVILLE MARKET DATA:
+MARKET ANALYSIS APPROACH:
+- Use your knowledge of local rehab costs, rent ranges, tax rates, cap rates, and neighborhood dynamics for whatever market the property is in.
+- Factor in regional labor costs, material costs, and seasonal considerations.
+- Consider local vacancy rates, property management fees, insurance costs, and closing cost norms for that state/county.
+- If the property is in the Knoxville, TN area, use these precise local benchmarks:
+
+KNOXVILLE TN BENCHMARKS (use only for Knox County / East TN properties):
 - Rehab $/sqft: Cosmetic $8-15 | Light $20-35 | Moderate $40-65 | Heavy $75-120
 - Property tax: ~$2.12/$100 assessed (Knox County)
 - Insurance: $1,200-2,400/yr | Vacancy: 5-8% | Management: 8-10% | Maintenance: 5-8%
@@ -64,6 +70,8 @@ KNOXVILLE MARKET DATA:
 - Appreciating: South Knox, North Knox/Happy Holler, East Knox, Lonsdale, Mechanicsville
 - Premium: Sequoyah Hills, Bearden, Farragut (higher entry, lower caps)
 - Hard money: 12-14% interest, 2-3 points, 12mo term typical
+
+For ALL markets, be conservative in estimates and flag risks clearly.
 
 Respond ONLY with valid JSON (no markdown, no backticks):
 {
@@ -148,7 +156,7 @@ export default function DealAnalyzerV2() {
   const [fetchError, setFetchError] = useState(null);
 
   const [property, setProperty] = useState({
-    address: "", city: "Knoxville", state: "TN", zip: "", neighborhood: "",
+    address: "", city: "", state: "", zip: "", neighborhood: "",
     askingPrice: "", beds: 3, baths: 2, sqft: "", yearBuilt: "",
     lotAcres: "", propertyType: "Single Family", daysOnMarket: "",
     priceReductions: 0, hoaFees: "", taxesAnnual: "", description: "",
@@ -216,7 +224,7 @@ export default function DealAnalyzerV2() {
 
       setProperty({
         address: parsed.address || "",
-        city: parsed.city || "Knoxville",
+        city: parsed.city || "",
         state: parsed.state || "TN",
         zip: parsed.zip || "",
         neighborhood: parsed.neighborhood || "",
