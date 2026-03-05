@@ -114,7 +114,7 @@ export default function PropertyScanner() {
   const [view, setView] = useState("criteria"); // criteria | results | detail
   const [criteria, setCriteria] = useState({
     neighborhoods: [],
-    propertyTypes: ["Single Family"],
+    propertyTypes: ["Single Family", "Duplex", "Triplex", "Quadplex", "Townhouse", "Condo"],
     bedsMin: 2, bedsMax: 5,
     bathsMin: 1, bathsMax: 4,
     priceMin: 50000, priceMax: 350000,
@@ -125,16 +125,18 @@ export default function PropertyScanner() {
     financingType: "conventional",
     downPaymentPct: 20,
     interestRate: 7.0,
-    daysOnMarketMax: 90,
-    listDateAfter: "2025-12-01",
+    daysOnMarketMax: 180,
+    listDateAfter: "",
     minCashOnCash: 0,
     minCapRate: 0,
   });
   const [results, setResults] = useState([]);
+  const [notRecommendedResults, setNotRecommendedResults] = useState([]);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [scanCount, setScanCount] = useState(0);
+  const [showNotRecommended, setShowNotRecommended] = useState(false);
 
   const updateCriteria = (k, v) => setCriteria(prev => ({ ...prev, [k]: v }));
 
@@ -159,46 +161,36 @@ export default function PropertyScanner() {
   /* ── FILTER & RANK ── */
   const runScan = useCallback(() => {
     const c = criteria;
-    let matches = SAMPLE_PROPERTIES.filter(p => {
-      if (c.neighborhoods.length > 0 && !c.neighborhoods.includes(p.neighborhood)) return false;
-      if (!c.propertyTypes.includes(p.propertyType)) return false;
-      if (p.beds < c.bedsMin || p.beds > c.bedsMax) return false;
-      if (p.baths < c.bathsMin || p.baths > c.bathsMax) return false;
-      if (p.price < c.priceMin || p.price > c.priceMax) return false;
-      if (p.sqft < c.sqftMin || p.sqft > c.sqftMax) return false;
-      if (p.yearBuilt < c.yearMin || p.yearBuilt > c.yearMax) return false;
-      if (p.lotAcres < c.lotMin || p.lotAcres > c.lotMax) return false;
-      if (CONDITION_RANK[p.condition] > CONDITION_RANK[c.maxRehabLevel]) return false;
-      if (p.daysOnMarket > c.daysOnMarketMax) return false;
-      if (c.listDateAfter && p.listDate < c.listDateAfter) return false;
-      return true;
-    });
-
-    // Simple scoring heuristic for ranking (pre-AI)
-    matches = matches.map(p => {
+    const scored = SAMPLE_PROPERTIES.map(p => {
       let score = 50;
-      // Price per sqft (lower is better for investment)
+      const reasons = [];
+      let matchesCriteria = true;
+      if (c.neighborhoods.length > 0 && !c.neighborhoods.includes(p.neighborhood)) { matchesCriteria = false; reasons.push("Outside selected neighborhoods"); }
+      if (c.propertyTypes.length > 0 && !c.propertyTypes.includes(p.propertyType)) { matchesCriteria = false; reasons.push(p.propertyType + " not selected"); }
+      if (p.beds < c.bedsMin || p.beds > c.bedsMax) { matchesCriteria = false; reasons.push(p.beds + " beds outside range"); }
+      if (p.baths < c.bathsMin || p.baths > c.bathsMax) { matchesCriteria = false; reasons.push(p.baths + " baths outside range"); }
+      if (p.price < c.priceMin || p.price > c.priceMax) { matchesCriteria = false; reasons.push("$" + p.price.toLocaleString() + " outside budget"); }
+      if (p.sqft < c.sqftMin || p.sqft > c.sqftMax) { matchesCriteria = false; reasons.push(p.sqft + " sqft outside range"); }
+      if (p.yearBuilt < c.yearMin || p.yearBuilt > c.yearMax) { matchesCriteria = false; reasons.push("Built " + p.yearBuilt + " outside range"); }
+      if (p.lotAcres < c.lotMin || p.lotAcres > c.lotMax) { matchesCriteria = false; reasons.push(p.lotAcres + " acres outside range"); }
+      if (CONDITION_RANK[p.condition] > CONDITION_RANK[c.maxRehabLevel]) { matchesCriteria = false; reasons.push(p.condition + " rehab exceeds tolerance"); }
+      if (p.daysOnMarket > c.daysOnMarketMax) { matchesCriteria = false; reasons.push(p.daysOnMarket + " DOM exceeds max"); }
+      if (c.listDateAfter && p.listDate < c.listDateAfter) { matchesCriteria = false; reasons.push("Listed before date filter"); }
       const ppsf = p.price / p.sqft;
-      if (ppsf < 100) score += 15;
-      else if (ppsf < 130) score += 10;
-      else if (ppsf < 160) score += 5;
-      // Days on market (longer = more negotiable)
-      if (p.daysOnMarket > 60) score += 10;
-      else if (p.daysOnMarket > 30) score += 5;
-      // Price reductions signal motivation
+      if (ppsf < 100) score += 15; else if (ppsf < 130) score += 10; else if (ppsf < 160) score += 5;
+      if (p.daysOnMarket > 60) score += 10; else if (p.daysOnMarket > 30) score += 5;
       if (p.priceReductions) score += p.priceReductions * 5;
-      // Hot neighborhoods
       if (["North Knoxville", "South Knoxville", "4th & Gill", "Mechanicsville"].includes(p.neighborhood)) score += 8;
-      // Duplex bonus
       if (p.propertyType === "Duplex") score += 10;
-      // Condition vs price
       if (p.condition === "heavy" && ppsf < 120) score += 10;
-      return { ...p, quickScore: Math.min(score, 99) };
+      return { ...p, quickScore: Math.min(score, 99), matchesCriteria, reasons };
     });
-
-    matches.sort((a, b) => b.quickScore - a.quickScore);
-    setResults(matches);
-    setScanCount(matches.length);
+    const recommended = scored.filter(p => p.matchesCriteria).sort((a, b) => b.quickScore - a.quickScore);
+    const notRec = scored.filter(p => !p.matchesCriteria).sort((a, b) => b.quickScore - a.quickScore);
+    setResults(recommended);
+    setNotRecommendedResults(notRec);
+    setScanCount(recommended.length);
+    setShowNotRecommended(false);
     setView("results");
   }, [criteria]);
 
@@ -627,8 +619,8 @@ Score Buy & Hold, Flip, and BRRRR strategies independently.`;
 
             {results.length === 0 && (
               <div className="ps-section" style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 15, color: "#6a6358" }}>No properties match your criteria.</div>
-                <div style={{ fontSize: 12, color: "#4a4540", marginTop: 8 }}>Try widening your price range, adding neighborhoods, or adjusting condition tolerance.</div>
+                <div style={{ fontSize: 18, color: "#e8890c", fontFamily: "'Playfair Display', serif", fontWeight: 700 }}>No recommended investment opportunities right now.</div>
+                <div style={{ fontSize: 13, color: "#6a6358", marginTop: 8, lineHeight: 1.6 }}>None of the current listings match your criteria. Try widening your price range, adding more property types, or adjusting your rehab tolerance.</div>
               </div>
             )}
 
@@ -673,6 +665,67 @@ Score Buy & Hold, Flip, and BRRRR strategies independently.`;
                 <div style={{ fontSize: 11, color: "#c07a22", marginTop: 10, fontWeight: 500 }}>Click for full AI analysis →</div>
               </div>
             ))}
+
+            {/* NOT RECOMMENDED SECTION */}
+            {notRecommendedResults.length > 0 && (
+              <div style={{ marginTop: 32 }}>
+                <button onClick={() => setShowNotRecommended(!showNotRecommended)} style={{
+                  width: "100%", padding: "14px 20px", background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(138,132,119,0.15)", borderRadius: 8, cursor: "pointer",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>
+                  <span style={{ fontSize: 14, color: "#6a6358", fontWeight: 500 }}>
+                    {showNotRecommended ? "▾" : "▸"} {notRecommendedResults.length} listings outside your criteria
+                  </span>
+                  <span style={{ fontSize: 11, color: "#4a4540" }}>
+                    {showNotRecommended ? "Hide" : "Show why they were filtered out"}
+                  </span>
+                </button>
+
+                {showNotRecommended && notRecommendedResults.map((p, idx) => (
+                  <div key={p.id} className="ps-card" onClick={() => analyzeProperty(p)}
+                    style={{ opacity: 0.7, borderColor: "rgba(138,132,119,0.1)" }}>
+                    <div className="ps-card-head">
+                      <div>
+                        <span className="ps-card-addr">{p.address}</span>
+                        <div className="ps-card-hood">{p.neighborhood} · {p.zip}</div>
+                      </div>
+                      <div className="ps-card-score-badge" style={{
+                        background: "rgba(138,132,119,0.08)",
+                        border: "1px solid rgba(138,132,119,0.15)",
+                        color: "#6a6358",
+                      }}>
+                        {p.quickScore}
+                      </div>
+                    </div>
+
+                    <div className="ps-card-metrics">
+                      <div className="ps-card-metric"><div className="val" style={{ color: "#6a6358" }}>{fmt(p.price)}</div><div className="lbl">Price</div></div>
+                      <div className="ps-card-metric"><div className="val" style={{ color: "#6a6358" }}>{p.beds}/{p.baths}</div><div className="lbl">Bd/Ba</div></div>
+                      <div className="ps-card-metric"><div className="val" style={{ color: "#6a6358" }}>{p.sqft.toLocaleString()}</div><div className="lbl">Sqft</div></div>
+                      <div className="ps-card-metric"><div className="val" style={{ color: "#6a6358" }}>{p.condition}</div><div className="lbl">Condition</div></div>
+                    </div>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+                      {p.reasons.map((r, i) => (
+                        <span key={i} style={{
+                          fontSize: 10, padding: "3px 8px", borderRadius: 3,
+                          background: "rgba(249,115,22,0.05)", color: "#f97316",
+                          border: "1px solid rgba(249,115,22,0.1)",
+                        }}>✕ {r}</span>
+                      ))}
+                    </div>
+                    {p.quickScore >= 65 && (
+                      <div style={{ fontSize: 11, color: "#4ade80", marginTop: 8 }}>
+                        ★ High investment score despite criteria mismatch — worth a second look?
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: "#5a5549", marginTop: 6, fontWeight: 500 }}>Click for full AI analysis anyway →</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
