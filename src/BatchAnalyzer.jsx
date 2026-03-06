@@ -32,22 +32,25 @@ Extract every listing you can find. If you can only find a subset, note how many
 
 const BATCH_ANALYSIS_SYSTEM = `You are an expert real estate investment analyst with deep knowledge of US markets. Analyze each property and score it as an investment.
 
-For each property, provide a quick investment assessment considering:
+For each property, provide a detailed investment assessment considering:
 - Price per sqft relative to the area
-- Estimated rental income potential
-- Rehab needs based on age and condition
+- Estimated rental income potential using local market knowledge
+- Rehab needs based on age, condition, and description
 - Neighborhood appreciation trajectory
-- Cap rate potential
+- Full expense breakdown (mortgage, taxes, insurance, management, maintenance, vacancy)
+- Cap rate calculation
 - Flip viability
 
 For Knoxville TN properties, use these benchmarks:
 - Rehab $/sqft: Cosmetic $8-15 | Light $20-35 | Moderate $40-65 | Heavy $75-120
 - Monthly rents: 1BR $800-1,100 | 2BR $1,000-1,400 | 3BR $1,200-1,800 | 4BR $1,500-2,200
-- Cap rates: 6-9%
+- Cap rates: 6-9% | Property tax: ~$2.12/$100 | Insurance: $100-200/mo | Management: 9% | Maintenance: 6% | Vacancy: 7%
 
-For other markets, use your knowledge of local costs and rents.
+For other markets, use your knowledge of local costs, rents, and tax rates.
 
 For multi-unit properties (duplex, triplex, quad): calculate rent for ALL units combined, not just one unit. Base all cash flow and cap rate projections on total income from all units.
+
+CALCULATE MORTGAGE: Use the investor's financing terms (down payment % and interest rate) provided in the prompt. Monthly mortgage = standard 30yr amortization formula.
 
 GRADING: A = strong positive cash flow + upside. B = positive cash flow, decent returns. C = break-even or slight negative cash flow. D = negative cash flow with limited upside. F = deeply negative or fundamentally flawed. Negative cash flow properties CANNOT be A or B grade regardless of appreciation potential. Be brutally honest.
 
@@ -65,11 +68,24 @@ Respond ONLY with valid JSON (no markdown, no backticks):
       "grade": "A|B|C|D|F",
       "estimatedMonthlyRent": number,
       "estimatedCapRate": number,
+      "grossRentMultiplier": number,
+      "onePercentRule": boolean,
       "rehabEstimate": number,
       "rehabLevel": "cosmetic|light|moderate|heavy",
       "arvEstimate": number,
       "flipProfit": number,
       "monthlyCashFlow": number,
+      "monthlyExpenses": {
+        "mortgage": number,
+        "taxes": number,
+        "insurance": number,
+        "management": number,
+        "maintenance": number,
+        "vacancy": number,
+        "hoa": number
+      },
+      "totalMonthlyExpenses": number,
+      "downPaymentAmount": number,
       "bestStrategy": "Buy & Hold|Flip|BRRRR",
       "oneLiner": "One sentence verdict",
       "riskFlags": ["string"],
@@ -105,7 +121,7 @@ const fmtPct = n => n == null || isNaN(n) ? "0%" : n.toFixed(1) + "%";
 const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#b5ac9f");
 const gradeBg = g => ({ A: "rgba(74,222,128,0.07)", B: "rgba(96,165,250,0.07)", C: "rgba(250,204,21,0.07)", D: "rgba(249,115,22,0.07)", F: "rgba(248,113,113,0.07)" }[g] || "rgba(138,132,119,0.05)");
 
-export default function BatchAnalyzer() {
+export default function BatchAnalyzer({ onRunInDealAnalyzer }) {
   const [step, setStep] = useState("url"); // url | extracting | review | analyzing | results | detail
   const [urlText, setUrlText] = useState("");
   const [error, setError] = useState(null);
@@ -174,8 +190,8 @@ export default function BatchAnalyzer() {
     setError(null);
     const extracted = [];
 
-    for (let i = 0; i < Math.min(urls.length, 20); i++) {
-      setStatusMsg(`Fetching property ${i + 1} of ${Math.min(urls.length, 20)}...`);
+    for (let i = 0; i < Math.min(urls.length, 10); i++) {
+      setStatusMsg(`Fetching property ${i + 1} of ${Math.min(urls.length, 10)}...`);
       try {
         // Brief pause between calls to avoid rate limits
         if (i > 0) await new Promise(r => setTimeout(r, 2000));
@@ -203,7 +219,7 @@ export default function BatchAnalyzer() {
       return;
     }
     setListings(extracted);
-    setSearchSummary(`${extracted.length} of ${Math.min(urls.length, 20)} properties extracted`);
+    setSearchSummary(`${extracted.length} of ${Math.min(urls.length, 10)} properties extracted`);
     setStep("review");
   };
 
@@ -223,8 +239,8 @@ export default function BatchAnalyzer() {
 
       const rehabLabels = { turnkey: "Turnkey/Cosmetic only", light: "Light rehab", moderate: "Moderate rehab", heavy: "Heavy/Gut rehab" };
       const result = await apiCall({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 8000,
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 12000,
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
@@ -267,14 +283,15 @@ export default function BatchAnalyzer() {
   const getSortedResults = () => {
     const merged = analyses.map((a, idx) => {
       const listing = idx < listings.length ? listings[idx] : {};
-      // Combine: listing data first, then analysis data on top, with explicit fallbacks for key fields
+      // Analysis data for scores/grades, but LISTING data ALWAYS wins for price and specs
       return {
-        ...listing,
         ...a,
-        price: a.price || listing.price || 0,
-        beds: a.beds || listing.beds || 0,
-        baths: a.baths || listing.baths || 0,
-        sqft: a.sqft || listing.sqft || 0,
+        // These ALWAYS come from the original listing extraction, never from the analysis AI
+        price: listing.price || a.price || 0,
+        beds: listing.beds || a.beds || 0,
+        baths: listing.baths || a.baths || 0,
+        sqft: listing.sqft || a.sqft || 0,
+        address: listing.address || a.address || "",
         city: listing.city || a.city || "",
         state: listing.state || a.state || "",
         zip: listing.zip || a.zip || "",
@@ -402,7 +419,7 @@ export default function BatchAnalyzer() {
       <div className="ba-header">
         <div>
           <h1>Batch Analyzer</h1>
-          <div className="sub">Paste up to 20 listing links → AI scores and ranks every property</div>
+          <div className="sub">Paste up to 10 listing links → AI scores and ranks every property</div>
         </div>
         {step !== "url" && (
           <button className="ba-btn ba-btn-ghost ba-btn-sm" onClick={() => { setStep("url"); setListings([]); setAnalyses([]); setUrlText(""); setError(null); }}>
@@ -419,7 +436,7 @@ export default function BatchAnalyzer() {
               <div style={{ fontSize: 28, marginBottom: 4 }}>🔗</div>
               <div style={{ fontSize: 15, color: "#d8d0c4", fontWeight: 500 }}>Paste property listing links</div>
               <div style={{ fontSize: 12, color: "#b5ac9f", marginTop: 4 }}>
-                One link per line — up to 20 properties. Find listings on Zillow, Redfin, or Realtor.com and paste the URLs here.
+                One link per line — up to 10 properties. Find listings on Zillow, Redfin, or Realtor.com and paste the URLs here.
               </div>
               <textarea
                 className="ba-url-input"
@@ -435,7 +452,7 @@ export default function BatchAnalyzer() {
                   <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Realtor.com</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#e8890c", fontWeight: 600 }}>
-                  {urlText.split("\n").filter(u => u.trim().length > 10).length} / 20 links
+                  {urlText.split("\n").filter(u => u.trim().length > 10).length} / 10 links
                 </div>
               </div>
             </div>
@@ -468,23 +485,41 @@ export default function BatchAnalyzer() {
               {searchSummary && <div style={{ fontSize: 13, color: "#a89e92", marginTop: 4 }}>{searchSummary}</div>}
             </div>
 
-            {/* Listing preview cards */}
+            {/* Listing preview cards — editable prices */}
             <div className="ba-section">
               <div className="ba-section-title">Listings to Analyze</div>
+              <div style={{ fontSize: 11, color: "#b5ac9f", marginBottom: 10 }}>
+                Verify the prices below are correct — edit any that look wrong before analyzing.
+              </div>
               {listings.map((l, i) => (
                 <div key={i} style={{
                   padding: "10px 14px", marginBottom: 6, borderRadius: 6,
                   background: "rgba(232,137,12,0.02)", border: "1px solid rgba(232,137,12,0.05)",
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
                 }}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#d8d0c4" }}>{l.address}</div>
-                    <div style={{ fontSize: 11, color: "#a89e92" }}>
+                    <div style={{ fontSize: 11, color: "#b5ac9f" }}>
                       {l.city}, {l.state} · {l.beds}bd/{l.baths}ba · {l.sqft?.toLocaleString()} sqft
                     </div>
                   </div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 700, color: "#e8890c" }}>
-                    {fmt(l.price)}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ color: "#e8890c", fontWeight: 600, fontSize: 14 }}>$</span>
+                    <input
+                      type="number"
+                      value={l.price || ""}
+                      onChange={e => {
+                        const updated = [...listings];
+                        updated[i] = { ...updated[i], price: +e.target.value };
+                        setListings(updated);
+                      }}
+                      style={{
+                        width: 110, padding: "6px 8px", background: "rgba(0,0,0,0.3)",
+                        border: "1px solid rgba(232,137,12,0.15)", borderRadius: 4,
+                        color: "#e8890c", fontFamily: "'Playfair Display', serif", fontSize: 15,
+                        fontWeight: 700, textAlign: "right", outline: "none",
+                      }}
+                    />
                   </div>
                 </div>
               ))}
@@ -643,26 +678,97 @@ export default function BatchAnalyzer() {
                   </div>
                 </div>
 
-                <div className="ba-metrics">
+                {/* Primary metrics */}
+                <div className="ba-metrics" style={{ marginTop: 12 }}>
                   <div className="ba-metric"><div className="val">{fmt(p.price)}</div><div className="lbl">Price</div></div>
                   <div className="ba-metric"><div className="val">{fmt(p.estimatedMonthlyRent)}</div><div className="lbl">Rent/Mo</div></div>
-                  <div className="ba-metric"><div className="val">{fmt(p.monthlyCashFlow)}</div><div className="lbl">Cash Flow</div></div>
+                  <div className="ba-metric">
+                    <div className="val" style={{ color: p.monthlyCashFlow >= 500 ? "#4ade80" : p.monthlyCashFlow >= 0 ? "#facc15" : "#f87171" }}>
+                      {fmt(p.monthlyCashFlow)}
+                    </div>
+                    <div className="lbl">Cash Flow/Mo</div>
+                  </div>
                   <div className="ba-metric"><div className="val">{fmtPct(p.estimatedCapRate)}</div><div className="lbl">Cap Rate</div></div>
                   <div className="ba-metric"><div className="val">{fmt(p.flipProfit)}</div><div className="lbl">Flip Profit</div></div>
                   <div className="ba-metric"><div className="val">{p.investmentScore}</div><div className="lbl">Score</div></div>
                 </div>
 
-                <div style={{ fontSize: 13, color: "#8a8477", lineHeight: 1.5, marginBottom: 8 }}>{p.oneLiner}</div>
+                {/* Expense breakdown */}
+                {p.monthlyExpenses && (
+                  <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 7,
+                    background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.03)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginBottom: 8 }}>
+                      Monthly Expense Breakdown
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 6 }}>
+                      {[
+                        { key: "mortgage", label: "Mortgage" },
+                        { key: "taxes", label: "Taxes" },
+                        { key: "insurance", label: "Insurance" },
+                        { key: "management", label: "Mgmt" },
+                        { key: "maintenance", label: "Maint." },
+                        { key: "vacancy", label: "Vacancy" },
+                        ...(p.monthlyExpenses.hoa > 0 ? [{ key: "hoa", label: "HOA" }] : []),
+                      ].map(({ key, label }) => p.monthlyExpenses[key] > 0 && (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "4px 8px", borderRadius: 4, background: "rgba(255,255,255,0.015)" }}>
+                          <span style={{ fontSize: 10, color: "#8a8477" }}>{label}</span>
+                          <span style={{ fontSize: 11, color: "#d8d0c4", fontWeight: 500 }}>{fmt(p.monthlyExpenses[key])}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, padding: "5px 8px",
+                      borderTop: "1px solid rgba(232,137,12,0.08)" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#e8890c" }}>TOTAL EXPENSES</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#e8890c" }}>{fmt(p.totalMonthlyExpenses || Object.values(p.monthlyExpenses || {}).reduce((a, b) => a + (b || 0), 0))}/mo</span>
+                    </div>
+                  </div>
+                )}
 
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {/* Deal badges row */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
                   <span className="ba-tag ba-tag-strategy">{p.bestStrategy}</span>
+                  {p.onePercentRule !== undefined && (
+                    <span className="ba-tag" style={p.onePercentRule
+                      ? { background: "rgba(74,222,128,0.06)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.12)" }
+                      : { background: "rgba(248,113,113,0.06)", color: "#f87171", border: "1px solid rgba(248,113,113,0.12)" }}>
+                      {p.onePercentRule ? "✓ 1% Rule" : "✗ 1% Rule"}
+                    </span>
+                  )}
+                  {p.grossRentMultiplier && (
+                    <span className="ba-tag" style={{ background: "rgba(192,122,34,0.06)", color: "#c07a22", border: "1px solid rgba(192,122,34,0.12)" }}>
+                      GRM {p.grossRentMultiplier.toFixed(1)}×
+                    </span>
+                  )}
                   {p.topStrength && <span className="ba-tag ba-tag-good">✓ {p.topStrength}</span>}
                   {(p.riskFlags || []).slice(0, 2).map((r, i) => (
                     <span key={i} className="ba-tag ba-tag-risk">⚠ {r}</span>
                   ))}
                 </div>
 
-                <div style={{ fontSize: 11, color: "#e8890c", marginTop: 10, fontWeight: 500 }}>Click for full analysis →</div>
+                <div style={{ fontSize: 13, color: "#8a8477", lineHeight: 1.5, marginTop: 8 }}>{p.oneLiner}</div>
+
+                {/* Footer actions */}
+                <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10,
+                  borderTop: "1px solid rgba(255,255,255,0.04)", alignItems: "center" }}>
+                  <div style={{ fontSize: 11, color: "#e8890c", fontWeight: 500, flex: 1 }}>Click card for deep dive analysis →</div>
+                  {onRunInDealAnalyzer && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onRunInDealAnalyzer(p); }}
+                      style={{
+                        padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                        background: "rgba(192,122,34,0.12)", color: "#c07a22",
+                        border: "1px solid rgba(192,122,34,0.3)", cursor: "pointer",
+                        fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.3,
+                        transition: "all 0.15s", flexShrink: 0,
+                      }}
+                      onMouseEnter={e => { e.target.style.background = "rgba(192,122,34,0.22)"; e.target.style.borderColor = "#c07a22"; }}
+                      onMouseLeave={e => { e.target.style.background = "rgba(192,122,34,0.12)"; e.target.style.borderColor = "rgba(192,122,34,0.3)"; }}
+                    >
+                      ⚡ Run in Deal Analyzer
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </>

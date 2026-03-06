@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 /* ─── KNOXVILLE DEFAULTS ─── */
 const NEIGHBORHOODS = [
@@ -158,27 +158,101 @@ Respond ONLY with valid JSON (no markdown, no backticks):
   }
 }`;
 
+/* ─── RENT COMPS PROMPT ─── */
+const RENT_COMPS_SYSTEM = `You are a rental market researcher. Your job is to find the most accurate current rental data for a specific address using live web search.
+
+Search strategy (execute ALL of these searches):
+1. Search "[address] Zillow rent" or "[address] Zestimate rent" to find the Zillow Rent Zestimate
+2. Search "[city] [beds]BR rental comps [zip]" to find active rental listings in that area
+3. Search "Rentometer [address]" or "[neighborhood] average rent [beds]BR" for market averages
+4. If multifamily, search each unit type separately (e.g. "2BR apartment [neighborhood] rent")
+
+Return ONLY valid JSON (no markdown, no backticks):
+{
+  "zillowRentZestimate": number or null,
+  "rentometerMedian": number or null,
+  "marketRentLow": number,
+  "marketRentHigh": number,
+  "marketRentMid": number,
+  "confidence": "high|medium|low",
+  "dataSource": "Description of what you found and from where",
+  "activeComps": [
+    {
+      "address": "string",
+      "rent": number,
+      "beds": number,
+      "baths": number,
+      "sqft": number or null,
+      "source": "zillow|redfin|apartments.com|craigslist|other",
+      "notes": "string"
+    }
+  ],
+  "marketNotes": "2-3 sentence summary of rental market conditions for this property type and area",
+  "onePercentTest": "Does this property meet the 1% rule at the estimated rent? Brief analysis."
+}
+
+Use only data you actually find via search. Do not fabricate rental figures. If you cannot find Zillow Rent Zestimate specifically, note that and use active comps to estimate.`;
+
 /* ─── UTILS ─── */
 const fmt = n => n == null || isNaN(n) ? "$0" : "$" + Math.round(n).toLocaleString();
 const fmtPct = n => n == null || isNaN(n) ? "0%" : n.toFixed(1) + "%";
 const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#b5ac9f");
 const gradeBg = g => ({ A: "rgba(74,222,128,0.07)", B: "rgba(96,165,250,0.07)", C: "rgba(250,204,21,0.07)", D: "rgba(249,115,22,0.07)", F: "rgba(248,113,113,0.07)" }[g] || "rgba(138,132,119,0.05)");
 
-export default function DealAnalyzerV2() {
+export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
   // Steps: url → review → options → analyzing → results
   const [step, setStep] = useState("url");
   const [url, setUrl] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState(null);
 
-  const [property, setProperty] = useState({
+  const defaultProperty = {
     address: "", city: "", state: "", zip: "", neighborhood: "",
     askingPrice: "", beds: 3, baths: 2, sqft: "", yearBuilt: "",
     lotAcres: "", propertyType: "Single Family", daysOnMarket: "",
     priceReductions: 0, hoaFees: "", taxesAnnual: "", description: "",
     features: [], conditionEstimate: "moderate", source: "",
-  });
+  };
+
+  const [property, setProperty] = useState(defaultProperty);
   const updateProp = (k, v) => setProperty(prev => ({ ...prev, [k]: v }));
+
+  // Rent comps state
+  const [rentComps, setRentComps] = useState(null);
+
+  // Handle data coming in from Batch Analyzer
+  useEffect(() => {
+    if (initialData) {
+      setProperty({
+        address: initialData.address || "",
+        city: initialData.city || "",
+        state: initialData.state || "TN",
+        zip: initialData.zip || "",
+        neighborhood: initialData.neighborhood || "",
+        askingPrice: initialData.price || initialData.askingPrice || "",
+        beds: initialData.beds || 3,
+        baths: initialData.baths || 2,
+        sqft: initialData.sqft || "",
+        yearBuilt: initialData.yearBuilt || "",
+        lotAcres: initialData.lotAcres || "",
+        propertyType: initialData.propertyType || "Single Family",
+        daysOnMarket: initialData.daysOnMarket || "",
+        priceReductions: initialData.priceReductions || 0,
+        hoaFees: initialData.hoaFees || "",
+        taxesAnnual: initialData.taxesAnnual || "",
+        description: initialData.description || "",
+        features: initialData.features || [],
+        conditionEstimate: initialData.conditionEstimate || "moderate",
+        source: initialData.source || "batch",
+      });
+      setRehabLevel(initialData.conditionEstimate || "moderate");
+      setUrl(initialData.listingUrl || "");
+      setRentComps(null);
+      setResult(null);
+      setStep("review");
+      onInitialDataConsumed?.();
+    }
+  }, [initialData]); // eslint-disable-line
 
   const [rehabLevel, setRehabLevel] = useState("moderate");
   const [investorNotes, setInvestorNotes] = useState("");
@@ -279,15 +353,67 @@ export default function DealAnalyzerV2() {
 
   const [loadingStatus, setLoadingStatus] = useState("");
 
+  /* ─── FETCH LIVE RENT COMPS ─── */
+  const fetchRentComps = async (prop) => {
+    const addressStr = `${prop.address}, ${prop.city}, ${prop.state} ${prop.zip}`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+      const response = await fetch("/api/anthropic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          system: RENT_COMPS_SYSTEM,
+          messages: [{ role: "user", content: `Find current rental comps and Zillow Rent Zestimate for:\n\nAddress: ${addressStr}\nProperty type: ${prop.propertyType}\nBedrooms: ${prop.beds} | Bathrooms: ${prop.baths} | Sqft: ${prop.sqft || "unknown"}\n\nSearch for the Zillow Rent Zestimate for this address, then find 3-5 active comparable rentals in the same neighborhood/zip code.` }],
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      return JSON.parse(jsonMatch[0]);
+    } catch {
+      return null;
+    }
+  };
+
   /* ─── RUN ANALYSIS ─── */
   const runAnalysis = async () => {
     setStep("analyzing");
     setResult(null);
+    setRentComps(null);
     setAnalysisError(null);
     setActiveTab("overview");
-    setLoadingStatus("Sending property to AI analyst...");
 
+    // ── Step 1: Fetch live rent comps ──
+    setLoadingStatus("🔍 Searching for live rent comps (Zillow, Rentometer, active listings)...");
+    const comps = await fetchRentComps(property);
+    setRentComps(comps);
+
+    // ── Step 2: Build prompt with live comps injected ──
+    setLoadingStatus("📊 Running full investment analysis...");
     const condLabel = CONDITIONS.find(c => c.value === rehabLevel)?.label || rehabLevel;
+
+    const rentCompsBlock = comps ? `
+LIVE RENT COMPS (freshly fetched — use these as your primary rent reference):
+- Zillow Rent Zestimate: ${comps.zillowRentZestimate ? "$" + comps.zillowRentZestimate + "/mo" : "Not found"}
+- Rentometer Median: ${comps.rentometerMedian ? "$" + comps.rentometerMedian + "/mo" : "Not found"}
+- Market Range: $${comps.marketRentLow}–$${comps.marketRentHigh}/mo (mid: $${comps.marketRentMid}/mo)
+- Data confidence: ${comps.confidence}
+- Source: ${comps.dataSource}
+${comps.activeComps?.length > 0 ? `\nActive rental comps found:\n${comps.activeComps.map(c => `  • ${c.address} — $${c.rent}/mo | ${c.beds}bd/${c.baths}ba${c.sqft ? " | " + c.sqft + " sqft" : ""} (${c.source})`).join("\n")}` : ""}
+${comps.onePercentTest ? `\n1% Rule check: ${comps.onePercentTest}` : ""}
+
+Use the Zillow Rent Zestimate as your primary rent anchor (if available). Cross-reference with active comps. Do NOT use generic hardcoded ranges — these live comps are the ground truth.` : `
+NOTE: Live rent comp fetch did not return data. Use your best market knowledge for rent estimates and clearly note the uncertainty.`;
+
     const prompt = `Analyze this investment property:
 
 Address: ${property.address}, ${property.city}, ${property.state} ${property.zip}
@@ -304,6 +430,7 @@ Annual Taxes: ${property.taxesAnnual ? "$" + property.taxesAnnual : "Estimate ba
 Description: ${property.description || "None provided"}
 Features: ${property.features.length > 0 ? property.features.join(", ") : "None noted"}
 ${investorNotes ? `\nINVESTOR'S OWN NOTES (factor these heavily into your analysis):\n${investorNotes}` : ""}
+${rentCompsBlock}
 
 Investor's Selected Rehab Level: ${condLabel}
 Financing: ${financing === "conventional" ? "Conventional 30yr" : financing === "hard_money" ? "Hard Money 12mo" : "Cash"}
@@ -320,7 +447,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
 
-      setLoadingStatus("Waiting for AI response (this can take 30-60 seconds)...");
+      setLoadingStatus("Waiting for deep analysis (30-60 seconds)...");
 
       const response = await fetch("/api/anthropic", {
         method: "POST",
@@ -878,8 +1005,12 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         {step === "analyzing" && (
           <div className="da2-loading">
             <div className="da2-spinner" />
-            <div style={{ color: "#8a8477", fontSize: 14 }}>{loadingStatus}</div>
-            <div style={{ color: "#a89e92", fontSize: 12, marginTop: 4 }}>Rehab · ARV · Cash Flow · Flip · BRRRR · Scenarios</div>
+            <div style={{ color: "#e8e0d4", fontSize: 14, fontWeight: 600 }}>{loadingStatus}</div>
+            <div style={{ color: "#a89e92", fontSize: 12, marginTop: 8, maxWidth: 380, lineHeight: 1.6 }}>
+              {loadingStatus.includes("rent comp") ?
+                "Searching Zillow Rent Zestimate, Rentometer, and active rental listings for this address..." :
+                "Rehab · ARV · Cash Flow · Flip · BRRRR · Scenarios"}
+            </div>
             <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => { setStep("options"); setAnalysisError("Analysis cancelled."); }}
               style={{ marginTop: 16 }}>Cancel</button>
           </div>
@@ -900,6 +1031,68 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
               </div>
               <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => setStep("options")}>← Change Terms</button>
             </div>
+
+            {/* ── LIVE RENT COMPS PANEL ── */}
+            {rentComps && (
+              <div className="da2-section" style={{ borderColor: "rgba(96,165,250,0.15)", background: "rgba(96,165,250,0.03)", marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, fontWeight: 600, color: "#60a5fa" }}>
+                    🔍 Live Rent Comps
+                  </div>
+                  <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 10, background: "rgba(96,165,250,0.1)", color: "#60a5fa",
+                    border: "1px solid rgba(96,165,250,0.2)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    {rentComps.confidence} confidence
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12 }}>
+                  {rentComps.zillowRentZestimate && (
+                    <div style={{ textAlign: "center", padding: "10px 8px", background: "rgba(96,165,250,0.06)", borderRadius: 7, border: "1px solid rgba(96,165,250,0.1)" }}>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#60a5fa" }}>{fmt(rentComps.zillowRentZestimate)}</div>
+                      <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginTop: 2 }}>Zillow Zestimate</div>
+                    </div>
+                  )}
+                  {rentComps.rentometerMedian && (
+                    <div style={{ textAlign: "center", padding: "10px 8px", background: "rgba(96,165,250,0.06)", borderRadius: 7, border: "1px solid rgba(96,165,250,0.1)" }}>
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#60a5fa" }}>{fmt(rentComps.rentometerMedian)}</div>
+                      <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginTop: 2 }}>Rentometer Median</div>
+                    </div>
+                  )}
+                  <div style={{ textAlign: "center", padding: "10px 8px", background: "rgba(192,122,34,0.04)", borderRadius: 7, border: "1px solid rgba(192,122,34,0.08)" }}>
+                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: "#c07a22" }}>{fmt(rentComps.marketRentMid)}/mo</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginTop: 2 }}>Market Mid</div>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "10px 8px", background: "rgba(192,122,34,0.04)", borderRadius: 7, border: "1px solid rgba(192,122,34,0.08)" }}>
+                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700, color: "#c07a22" }}>{fmt(rentComps.marketRentLow)}–{fmt(rentComps.marketRentHigh)}</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginTop: 2 }}>Market Range</div>
+                  </div>
+                </div>
+                {rentComps.activeComps?.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#a89e92", marginBottom: 6 }}>Active Comparable Rentals</div>
+                    {rentComps.activeComps.map((c, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "6px 10px", borderRadius: 5, marginBottom: 3,
+                        background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.03)" }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: "#d8d0c4" }}>{c.address}</div>
+                          <div style={{ fontSize: 10, color: "#8a8477" }}>{c.beds}bd/{c.baths}ba{c.sqft ? ` · ${c.sqft} sqft` : ""} · {c.source}</div>
+                        </div>
+                        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700, color: "#4ade80", flexShrink: 0 }}>{fmt(c.rent)}/mo</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: "#8a8477", lineHeight: 1.5 }}>
+                  <span style={{ color: "#a89e92" }}>Source: </span>{rentComps.dataSource}
+                </div>
+                {rentComps.onePercentTest && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#b5ac9f", lineHeight: 1.5, padding: "6px 10px",
+                    background: "rgba(192,122,34,0.04)", borderRadius: 5, border: "1px solid rgba(192,122,34,0.08)" }}>
+                    <strong style={{ color: "#c07a22" }}>1% Rule: </strong>{rentComps.onePercentTest}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Grade block */}
             {result.propertyOverview && (
