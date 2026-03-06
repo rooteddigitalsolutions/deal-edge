@@ -53,6 +53,10 @@ Respond ONLY with valid JSON (no markdown, no backticks):
   "analyses": [
     {
       "address": "matching address from input",
+      "price": number,
+      "beds": number,
+      "baths": number,
+      "sqft": number,
       "investmentScore": number (1-100),
       "grade": "A|B|C|D|F",
       "estimatedMonthlyRent": number,
@@ -71,6 +75,8 @@ Respond ONLY with valid JSON (no markdown, no backticks):
 }`;
 
 const DEEP_ANALYSIS_SYSTEM = `You are an expert real estate investment analyst. Provide a thorough investment analysis for this specific property.
+
+IMPORTANT: Use web search to look up this property's listing to get full details — photos, description, condition notes, comparable sales, neighborhood data. Combine what you find with the data provided.
 
 Use your knowledge of the local market for rehab costs, rents, taxes, and cap rates. For Knoxville TN, use precise local benchmarks.
 
@@ -200,7 +206,7 @@ export default function BatchAnalyzer() {
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
-          content: `Analyze these ${listings.length} properties as investments.\n\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\nMax rehab willingness: ${rehabLabels[maxRehab] || maxRehab}. Flag any properties that need more rehab than this — they may still be good deals but note the rehab exceeds the investor's preference.\n\n${listingSummary}`
+          content: `Analyze these ${listings.length} properties as investments. IMPORTANT: Return analyses in the SAME ORDER as listed below. Include the price, beds, baths, and sqft for each property in your response.\n\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\nMax rehab willingness: ${rehabLabels[maxRehab] || maxRehab}. Flag any properties that need more rehab than this — they may still be good deals but note the rehab exceeds the investor's preference.\n\n${listingSummary}`
         }],
       });
 
@@ -238,17 +244,26 @@ export default function BatchAnalyzer() {
 
   const getSortedResults = () => {
     const merged = analyses.map((a, idx) => {
-      // Try exact match first, then fuzzy match, then fall back to index
-      let listing = listings.find(l => l.address === a.address);
-      if (!listing) {
-        const aAddr = (a.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        listing = listings.find(l => {
-          const lAddr = (l.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-          return lAddr === aAddr || lAddr.includes(aAddr) || aAddr.includes(lAddr);
-        });
-      }
-      if (!listing && idx < listings.length) listing = listings[idx];
-      return { ...(listing || {}), ...a, price: (listing || {}).price || a.price || 0 };
+      const listing = idx < listings.length ? listings[idx] : {};
+      // Combine: listing data first, then analysis data on top, with explicit fallbacks for key fields
+      return {
+        ...listing,
+        ...a,
+        price: a.price || listing.price || 0,
+        beds: a.beds || listing.beds || 0,
+        baths: a.baths || listing.baths || 0,
+        sqft: a.sqft || listing.sqft || 0,
+        city: listing.city || a.city || "",
+        state: listing.state || a.state || "",
+        zip: listing.zip || a.zip || "",
+        yearBuilt: listing.yearBuilt || a.yearBuilt || null,
+        conditionEstimate: a.rehabLevel || listing.conditionEstimate || "",
+        description: listing.description || a.description || "",
+        listingUrl: listing.listingUrl || "",
+        lotAcres: listing.lotAcres || null,
+        daysOnMarket: listing.daysOnMarket || null,
+        _listingIndex: idx,
+      };
     });
     if (sortBy === "score") return merged.sort((a, b) => (b.investmentScore || 0) - (a.investmentScore || 0));
     if (sortBy === "price") return merged.sort((a, b) => (a.price || 0) - (b.price || 0));
