@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import DealAnalyzerV2 from "./DealAnalyzer.jsx";
 import PropertyScanner from "./PropertyScanner.jsx";
+import BatchAnalyzer from "./BatchAnalyzer.jsx";
 
 const TOOLS = [
   {
@@ -14,12 +15,12 @@ const TOOLS = [
     color: "#e8890c",
   },
   {
-    id: "property-scanner",
-    name: "Property Scanner",
-    status: "beta",
-    tagline: "Set your criteria. See what's worth your time.",
-    desc: "Define your investment profile — neighborhoods, price range, property type, rehab tolerance, financing terms, and minimum return thresholds. The scanner finds matching properties, ranks them by investment potential, and lets you deep-dive any property with full AI analysis across all strategies.",
-    features: ["Custom investor criteria filters", "Ranked results by deal quality", "Per-property AI deep dive", "Days-on-market & price cut signals", "Saved searches & date filtering"],
+    id: "batch-analyzer",
+    name: "Batch Analyzer",
+    status: "live",
+    tagline: "Paste a search link. Rank every listing.",
+    desc: "Run a search on Zillow, Redfin, or Realtor.com — then paste the URL here. The AI pulls every listing from the search, analyzes each one as an investment, and ranks them by score. Click any property for a full deep-dive across Buy & Hold, Flip, and BRRRR strategies.",
+    features: ["Works with Zillow, Redfin, Realtor.com", "Scores all listings in one shot", "Ranked by investment potential", "Sort by cash flow, cap rate, or flip profit", "Deep-dive any property"],
     icon: "🔍",
     color: "#d4770a",
   },
@@ -629,10 +630,10 @@ export default function DealEdgeSite() {
         </div>
       )}
 
-      {/* ═══ PROPERTY SCANNER PAGE ═══ */}
-      {page === "property-scanner" && (
+      {/* ═══ BATCH ANALYZER PAGE ═══ */}
+      {page === "batch-analyzer" && (
         <div style={{ paddingTop: 64 }}>
-          <PropertyScanner />
+          <BatchAnalyzer />
         </div>
       )}
 
@@ -648,7 +649,7 @@ export default function DealEdgeSite() {
 
             <div style={{ display: "grid", gap: 16, marginBottom: 36 }}>
               {[
-                { icon: "🏠", label: "Investors", desc: "Get early access to Deal Analyzer and Property Scanner" },
+                { icon: "🏠", label: "Investors", desc: "Get early access to Deal Analyzer and Batch Analyzer" },
                 { icon: "🤝", label: "Agents", desc: "White-label deal reports for your investor clients" },
                 { icon: "🔨", label: "Contractors", desc: "SOW Builder and Bid Comparison tools coming soon" },
                 { icon: "💼", label: "Partners", desc: "Licensing DealEdge for other markets? Let's talk." },
