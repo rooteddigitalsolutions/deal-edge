@@ -47,6 +47,8 @@ For Knoxville TN properties, use these benchmarks:
 
 For other markets, use your knowledge of local costs and rents.
 
+For multi-unit properties (duplex, triplex, quad): calculate rent for ALL units combined, not just one unit. Base all cash flow and cap rate projections on total income from all units.
+
 Respond ONLY with valid JSON (no markdown, no backticks):
 {
   "marketOverview": "2-3 sentence overview of this market for investors",
@@ -79,6 +81,8 @@ const DEEP_ANALYSIS_SYSTEM = `You are an expert real estate investment analyst. 
 IMPORTANT: Use web search to look up this property's listing to get full details — photos, description, condition notes, comparable sales, neighborhood data. Combine what you find with the data provided.
 
 Use your knowledge of the local market for rehab costs, rents, taxes, and cap rates. For Knoxville TN, use precise local benchmarks.
+
+For multi-unit properties (duplex, triplex, quad): calculate rent for ALL units combined and base all projections on total income from all units.
 
 Respond ONLY with valid JSON (no markdown, no backticks):
 {

@@ -73,6 +73,13 @@ KNOXVILLE TN BENCHMARKS (use only for Knox County / East TN properties):
 
 For ALL markets, be conservative in estimates and flag risks clearly.
 
+MULTI-UNIT PROPERTIES (Duplex, Triplex, Quadplex):
+- Calculate rent for EACH unit separately and show total combined rent.
+- If the listing says "2-unit duplex, each unit 2BR/1BA" then estimate rent for BOTH units and add them together.
+- Cash flow, cap rate, and all projections should be based on TOTAL rental income from all units.
+- Note the per-unit breakdown in your assumptions.
+- Multi-family properties are often better investment plays — reflect this in your scoring.
+
 Respond ONLY with valid JSON (no markdown, no backticks):
 {
   "propertyOverview": {
