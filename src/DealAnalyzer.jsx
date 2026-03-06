@@ -363,8 +363,8 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 2000,
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1500,
           system: RENT_COMPS_SYSTEM,
           messages: [{ role: "user", content: `Find current rental comps and Zillow Rent Zestimate for:\n\nAddress: ${addressStr}\nProperty type: ${prop.propertyType}\nBedrooms: ${prop.beds} | Bathrooms: ${prop.baths} | Sqft: ${prop.sqft || "unknown"}\n\nSearch for the Zillow Rent Zestimate for this address, then find 3-5 active comparable rentals in the same neighborhood/zip code.` }],
           tools: [{ type: "web_search_20250305", name: "web_search" }],
@@ -392,10 +392,16 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
     setAnalysisError(null);
     setActiveTab("overview");
 
-    // ── Step 1: Fetch live rent comps ──
-    setLoadingStatus("🔍 Searching for live rent comps (Zillow, Rentometer, active listings)...");
-    const comps = await fetchRentComps(property);
-    setRentComps(comps);
+    // ── Step 1: Fetch live rent comps (skip if already fetched for this property) ──
+    let comps = rentComps;
+    if (!comps) {
+      setLoadingStatus("🔍 Searching for live rent comps (Zillow, Rentometer, active listings)...");
+      comps = await fetchRentComps(property);
+      setRentComps(comps);
+    } else {
+      setLoadingStatus("📋 Using previously fetched rent comps...");
+      await new Promise(r => setTimeout(r, 400)); // brief pause so status is visible
+    }
 
     // ── Step 2: Build prompt with live comps injected ──
     setLoadingStatus("📊 Running full investment analysis...");
@@ -523,8 +529,11 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         .da2-header {
-          padding: 24px 36px; border-bottom: 1px solid rgba(192,122,34,0.1);
+          padding: 20px 36px; border-bottom: 1px solid rgba(192,122,34,0.1);
           background: linear-gradient(180deg, rgba(192,122,34,0.04) 0%, transparent 100%);
+        }
+        .da2-header-inner {
+          max-width: 920px; margin: 0 auto;
           display: flex; justify-content: space-between; align-items: center;
         }
         .da2-header h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 800; color: #c07a22; }
@@ -700,15 +709,17 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
 
       {/* HEADER */}
       <div className="da2-header">
-        <div>
-          <h1>Deal Analyzer</h1>
-          <div className="sub">Paste a listing link → AI extracts details → pick your terms → get the full breakdown</div>
+        <div className="da2-header-inner">
+          <div>
+            <h1>Deal Analyzer</h1>
+            <div className="sub">Paste a listing link → AI extracts details → pick your terms → get the full breakdown</div>
+          </div>
+          {(step === "review" || step === "options" || step === "results") && (
+            <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => { setStep("url"); setResult(null); setUrl(""); setRentComps(null); }}>
+              ← New Property
+            </button>
+          )}
         </div>
-        {(step === "review" || step === "options" || step === "results") && (
-          <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => { setStep("url"); setResult(null); setUrl(""); }}>
-            ← New Property
-          </button>
-        )}
       </div>
 
       <div className="da2-body">
@@ -1039,10 +1050,18 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, fontWeight: 600, color: "#60a5fa" }}>
                     🔍 Live Rent Comps
                   </div>
-                  <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 10, background: "rgba(96,165,250,0.1)", color: "#60a5fa",
-                    border: "1px solid rgba(96,165,250,0.2)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    {rentComps.confidence} confidence
-                  </span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button
+                      onClick={() => { setRentComps(null); runAnalysis(); }}
+                      style={{ fontSize: 10, padding: "3px 9px", borderRadius: 8, background: "transparent",
+                        color: "#8a8477", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer",
+                        fontFamily: "'DM Sans', sans-serif" }}
+                    >↺ Re-fetch</button>
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 10, background: "rgba(96,165,250,0.1)", color: "#60a5fa",
+                      border: "1px solid rgba(96,165,250,0.2)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {rentComps.confidence} confidence
+                    </span>
+                  </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12 }}>
                   {rentComps.zillowRentZestimate && (
