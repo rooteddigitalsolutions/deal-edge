@@ -224,7 +224,7 @@ export default function BatchAnalyzer() {
       const rehabLabels = { turnkey: "Turnkey/Cosmetic only", light: "Light rehab", moderate: "Moderate rehab", heavy: "Heavy/Gut rehab" };
       const result = await apiCall({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 4000,
+        max_tokens: 8000,
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
