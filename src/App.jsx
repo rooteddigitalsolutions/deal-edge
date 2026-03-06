@@ -17,9 +17,9 @@ const TOOLS = [
     id: "batch-analyzer",
     name: "Batch Analyzer",
     status: "live",
-    tagline: "Paste a search link. Rank every listing.",
-    desc: "Run a search on Zillow, Redfin, or Realtor.com — then paste the URL here. The AI pulls every listing from the search, analyzes each one as an investment, and ranks them by score. Click any property for a full deep-dive across Buy & Hold, Flip, and BRRRR strategies.",
-    features: ["Works with Zillow, Redfin, Realtor.com", "Scores all listings in one shot", "Ranked by investment potential", "Sort by cash flow, cap rate, or flip profit", "Deep-dive any property"],
+    tagline: "Paste links. Rank every property.",
+    desc: "Paste up to 20 Zillow, Redfin, or Realtor.com listing URLs. The AI fetches each property's details, scores them all as investments based on your goals, and ranks them. Click any property for a full deep-dive across Buy & Hold, Flip, and BRRRR strategies.",
+    features: ["Up to 20 listings at once", "Choose your investment goal", "Ranked by investment score", "Sort by cash flow, cap rate, or flip profit", "Deep-dive any property"],
     icon: "🔍",
     color: "#d4770a",
   },
@@ -238,7 +238,7 @@ export default function DealEdgeSite() {
           color: #f0ebe4; margin-bottom: 12px; letter-spacing: -1px;
         }
         .dl-section-sub {
-          font-size: 15px; color: #5a5549; max-width: 500px; line-height: 1.6; margin-bottom: 48px;
+          font-size: 15px; color: #a89e92; max-width: 500px; line-height: 1.6; margin-bottom: 48px;
         }
 
         /* TOOL CARDS */
@@ -321,7 +321,7 @@ export default function DealEdgeSite() {
           font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 800; color: #e8890c;
         }
         .dl-stat-lbl {
-          font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #5a5549; margin-top: 4px;
+          font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #a89e92; margin-top: 4px;
         }
 
         /* CONTACT */
@@ -343,10 +343,10 @@ export default function DealEdgeSite() {
         .dl-footer-inner {
           display: flex; justify-content: space-between; align-items: center;
         }
-        .dl-footer-copy { font-size: 12px; color: #3d3a35; }
+        .dl-footer-copy { font-size: 12px; color: #8a8477; }
         .dl-footer-links { display: flex; gap: 20px; }
         .dl-footer-link {
-          font-size: 12px; color: #5a5549; cursor: pointer; background: none;
+          font-size: 12px; color: #a89e92; cursor: pointer; background: none;
           border: none; font-family: 'Outfit', sans-serif; transition: color 0.2s;
         }
         .dl-footer-link:hover { color: #e8890c; }
@@ -431,7 +431,7 @@ export default function DealEdgeSite() {
                   <div style={{
                     fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 800, color: "#e8890c"
                   }}>{s.val}</div>
-                  <div style={{ fontSize: 11, color: "#5a5549", lineHeight: 1.4, maxWidth: 100 }}>{s.lbl}</div>
+                  <div style={{ fontSize: 11, color: "#a89e92", lineHeight: 1.4, maxWidth: 100 }}>{s.lbl}</div>
                 </div>
               ))}
             </div>
@@ -525,7 +525,7 @@ export default function DealEdgeSite() {
                     <div style={{ fontSize: 14, color: "#7a756c", lineHeight: 1.7 }}>{tool.desc}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: "#5a5549", marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: "#a89e92", marginBottom: 12 }}>
                       Key Features
                     </div>
                     {tool.features.map((f, i) => (
@@ -670,7 +670,7 @@ export default function DealEdgeSite() {
               style={{ textDecoration: "none", display: "inline-flex", padding: "16px 40px", fontSize: 15 }}>
               Email Adam →
             </a>
-            <div style={{ fontSize: 12, color: "#3d3a35", marginTop: 12 }}>adam@rooteddigitalsolutions.com</div>
+            <div style={{ fontSize: 12, color: "#8a8477", marginTop: 12 }}>adam@rooteddigitalsolutions.com</div>
           </div>
         </section>
       )}

@@ -73,6 +73,15 @@ KNOXVILLE TN BENCHMARKS (use only for Knox County / East TN properties):
 
 For ALL markets, be conservative in estimates and flag risks clearly.
 
+GRADING RULES (follow strictly):
+- ANY property with negative monthly cash flow on a Buy & Hold basis CANNOT receive higher than a C grade overall, regardless of appreciation potential or location.
+- A grade: Strong positive cash flow ($200+/mo), good cap rate (7%+), solid ARV upside, low risk.
+- B grade: Positive cash flow, decent cap rate (5-7%), reasonable upside.
+- C grade: Break-even to slightly negative cash flow, or significant rehab needed, or high risk factors.
+- D grade: Negative cash flow AND limited upside, or major structural/risk issues.
+- F grade: Deeply negative cash flow, overpriced relative to market, or fundamentally flawed deal.
+- Be brutally honest. Investors lose money on bad grades — don't sugarcoat.
+
 MULTI-UNIT PROPERTIES (Duplex, Triplex, Quadplex):
 - Calculate rent for EACH unit separately and show total combined rent.
 - If the listing says "2-unit duplex, each unit 2BR/1BA" then estimate rent for BOTH units and add them together.
@@ -152,7 +161,7 @@ Respond ONLY with valid JSON (no markdown, no backticks):
 /* ─── UTILS ─── */
 const fmt = n => n == null || isNaN(n) ? "$0" : "$" + Math.round(n).toLocaleString();
 const fmtPct = n => n == null || isNaN(n) ? "0%" : n.toFixed(1) + "%";
-const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#6a6358");
+const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#b5ac9f");
 const gradeBg = g => ({ A: "rgba(74,222,128,0.07)", B: "rgba(96,165,250,0.07)", C: "rgba(250,204,21,0.07)", D: "rgba(249,115,22,0.07)", F: "rgba(248,113,113,0.07)" }[g] || "rgba(138,132,119,0.05)");
 
 export default function DealAnalyzerV2() {
@@ -173,6 +182,7 @@ export default function DealAnalyzerV2() {
 
   const [rehabLevel, setRehabLevel] = useState("moderate");
   const [investorNotes, setInvestorNotes] = useState("");
+  const [investmentGoal, setInvestmentGoal] = useState("balanced");
   const [financing, setFinancing] = useState("conventional");
   const [downPct, setDownPct] = useState(20);
   const [rate, setRate] = useState(7.0);
@@ -300,6 +310,8 @@ Financing: ${financing === "conventional" ? "Conventional 30yr" : financing === 
 Down Payment: ${downPct}%
 Interest Rate: ${rate}%
 
+INVESTOR'S PRIMARY GOAL: ${investmentGoal === "cashflow" ? "Monthly cash flow — grade primarily on whether this property generates positive monthly income. Negative cash flow is a deal-breaker." : investmentGoal === "appreciation" ? "Appreciation / equity growth — grade primarily on ARV upside and neighborhood trajectory. Cash flow is secondary but sustained losses are still a major risk." : investmentGoal === "flip" ? "Flip for profit — grade primarily on buy-rehab-sell profit margin and timeline. Rental potential is secondary." : "Balanced — weight cash flow, appreciation, and flip potential equally. Negative cash flow is a serious negative regardless of other factors."}
+
 ${analyzeAllRehab ? "ALSO provide all 4 rehab scenario comparisons (cosmetic through full gut)." : ""}
 Include BRRRR analysis in addition to Buy & Hold and Flip.`;
 
@@ -389,7 +401,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
           display: flex; justify-content: space-between; align-items: center;
         }
         .da2-header h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 800; color: #c07a22; }
-        .da2-header .sub { font-size: 12px; color: #5a5549; margin-top: 2px; }
+        .da2-header .sub { font-size: 12px; color: #a89e92; margin-top: 2px; }
         .da2-body { max-width: 920px; margin: 0 auto; padding: 24px 36px 60px; }
 
         .da2-url-box {
@@ -405,12 +417,12 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
           outline: none; transition: border-color 0.2s; margin: 16px 0;
         }
         .da2-url-input:focus { border-color: #c07a22; }
-        .da2-url-input::placeholder { color: #3d3a35; }
-        .da2-url-sources { font-size: 11px; color: #4a4540; }
+        .da2-url-input::placeholder { color: #8a8477; }
+        .da2-url-sources { font-size: 11px; color: #a89e92; }
         .da2-url-sources span { display: inline-block; padding: 3px 10px; margin: 2px;
           background: rgba(192,122,34,0.05); border-radius: 12px; border: 1px solid rgba(192,122,34,0.08); }
 
-        .da2-or { text-align: center; color: #3d3a35; font-size: 12px; letter-spacing: 3px;
+        .da2-or { text-align: center; color: #8a8477; font-size: 12px; letter-spacing: 3px;
           text-transform: uppercase; margin: 16px 0; position: relative; }
         .da2-or::before, .da2-or::after {
           content: ''; position: absolute; top: 50%; width: 38%; height: 1px;
@@ -429,7 +441,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         }
         .da2-label {
           display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 1.4px; color: #5a5549; margin-bottom: 5px;
+          letter-spacing: 1.4px; color: #a89e92; margin-bottom: 5px;
         }
         .da2-input, .da2-select {
           width: 100%; padding: 9px 12px; background: rgba(255,255,255,0.03);
@@ -437,7 +449,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
           color: #d8d0c4; font-size: 13px; font-family: 'DM Sans', sans-serif; outline: none;
         }
         .da2-input:focus, .da2-select:focus { border-color: #c07a22; }
-        .da2-input::placeholder { color: #3a3730; }
+        .da2-input::placeholder { color: #8a8477; }
         .da2-select option { background: #14191f; color: #d8d0c4; }
         .da2-textarea { resize: vertical; min-height: 50px; }
         .da2-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -455,7 +467,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         .da2-cond-card.active { border-color: #c07a22; background: rgba(192,122,34,0.06); }
         .da2-cond-card .icon { font-size: 20px; margin-bottom: 4px; }
         .da2-cond-card .name { font-size: 12px; font-weight: 600; color: #d8d0c4; }
-        .da2-cond-card .desc { font-size: 10px; color: #5a5549; margin-top: 2px; }
+        .da2-cond-card .desc { font-size: 10px; color: #a89e92; margin-top: 2px; }
 
         /* Financing cards */
         .da2-fin-card {
@@ -466,7 +478,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         .da2-fin-card:hover { border-color: rgba(192,122,34,0.3); }
         .da2-fin-card.active { border-color: #c07a22; background: rgba(192,122,34,0.06); }
         .da2-fin-card .name { font-size: 13px; font-weight: 600; color: #d8d0c4; }
-        .da2-fin-card .desc { font-size: 10px; color: #5a5549; }
+        .da2-fin-card .desc { font-size: 10px; color: #a89e92; }
 
         .da2-btn {
           display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -517,7 +529,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
         /* Tabs */
         .da2-tabs { display: flex; gap: 0; border-bottom: 1px solid rgba(192,122,34,0.1); overflow-x: auto; margin-bottom: 20px; }
         .da2-tab {
-          padding: 10px 16px; font-size: 12px; font-weight: 500; color: #5a5549;
+          padding: 10px 16px; font-size: 12px; font-weight: 500; color: #a89e92;
           background: none; border: none; border-bottom: 2px solid transparent;
           cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
         }
@@ -531,12 +543,12 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
           border-radius: 7px; border: 1px solid rgba(192,122,34,0.06);
         }
         .da2-metric .val { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: #c07a22; }
-        .da2-metric .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #5a5549; margin-top: 3px; }
+        .da2-metric .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #a89e92; margin-top: 3px; }
 
         /* Table */
         .da2-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .da2-table th { text-align: left; padding: 7px 10px; font-size: 10px; font-weight: 700;
-          text-transform: uppercase; letter-spacing: 1px; color: #5a5549; border-bottom: 1px solid rgba(192,122,34,0.1); }
+          text-transform: uppercase; letter-spacing: 1px; color: #a89e92; border-bottom: 1px solid rgba(192,122,34,0.1); }
         .da2-table td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.025); color: #a89e92; }
         .da2-table td:first-child { color: #d8d0c4; font-weight: 500; }
         .da2-table .total td { font-weight: 700; color: #c07a22; border-top: 1px solid rgba(192,122,34,0.15); }
@@ -606,7 +618,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
             {fetching && (
               <div className="da2-loading" style={{ padding: 30 }}>
                 <div className="da2-spinner" />
-                <div style={{ color: "#5a5549", fontSize: 13 }}>Searching listing and extracting details...</div>
+                <div style={{ color: "#a89e92", fontSize: 13 }}>Searching listing and extracting details...</div>
               </div>
             )}
 
@@ -632,7 +644,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
             {property.source && (
               <div className="da2-fetched-badge">
                 ✓ Auto-filled from {property.source}
-                <span style={{ color: "#5a5549", marginLeft: 4 }}>— verify & edit below</span>
+                <span style={{ color: "#a89e92", marginLeft: 4 }}>— verify & edit below</span>
               </div>
             )}
 
@@ -744,7 +756,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
             {/* Investor Notes */}
             <div className="da2-section">
               <div className="da2-section-title">Your Intel</div>
-              <div style={{ fontSize: 11, color: "#5a5549", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: "#a89e92", marginBottom: 10 }}>
                 Anything you know that the listing doesn't say — condition details, seller motivation, neighborhood context, recent sales nearby, inspection notes, planned development, etc.
               </div>
               <textarea
@@ -778,6 +790,29 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
               <span style={{ color: "#d8d0c4", fontWeight: 600 }}>{property.address}</span>
               {" · "}{property.beds}bd/{property.baths}ba · {Number(property.sqft).toLocaleString()} sqft · {fmt(property.askingPrice)}
               <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => setStep("review")} style={{ float: "right", padding: "4px 10px" }}>Edit</button>
+            </div>
+
+            {/* Investment Goal */}
+            <div className="da2-section">
+              <div className="da2-section-title">Investment Goal</div>
+              <div style={{ fontSize: 11, color: "#a89e92", marginBottom: 10 }}>
+                This changes how the AI grades the deal — a great cash flow property might be a bad flip, and vice versa.
+              </div>
+              <div className="da2-grid4">
+                {[
+                  { value: "cashflow", label: "Cash Flow", desc: "Monthly income is priority", icon: "💰" },
+                  { value: "appreciation", label: "Appreciation", desc: "Long-term equity growth", icon: "📈" },
+                  { value: "flip", label: "Flip", desc: "Buy, rehab, sell for profit", icon: "🔨" },
+                  { value: "balanced", label: "Balanced", desc: "Score all strategies equally", icon: "⚖️" },
+                ].map(g => (
+                  <div key={g.value} className={`da2-cond-card ${investmentGoal === g.value ? "active" : ""}`}
+                    onClick={() => setInvestmentGoal(g.value)}>
+                    <div className="icon">{g.icon}</div>
+                    <div className="name">{g.label}</div>
+                    <div className="desc">{g.desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Rehab Level */}
@@ -844,7 +879,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
           <div className="da2-loading">
             <div className="da2-spinner" />
             <div style={{ color: "#8a8477", fontSize: 14 }}>{loadingStatus}</div>
-            <div style={{ color: "#4a4540", fontSize: 12, marginTop: 4 }}>Rehab · ARV · Cash Flow · Flip · BRRRR · Scenarios</div>
+            <div style={{ color: "#a89e92", fontSize: 12, marginTop: 4 }}>Rehab · ARV · Cash Flow · Flip · BRRRR · Scenarios</div>
             <button className="da2-btn da2-btn-ghost da2-btn-sm" onClick={() => { setStep("options"); setAnalysisError("Analysis cancelled."); }}
               style={{ marginTop: 16 }}>Cancel</button>
           </div>
@@ -859,7 +894,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                 <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 700, color: "#e8e0d4" }}>
                   {property.address}
                 </div>
-                <div style={{ fontSize: 12, color: "#5a5549", marginTop: 3 }}>
+                <div style={{ fontSize: 12, color: "#a89e92", marginTop: 3 }}>
                   {property.neighborhood ? property.neighborhood + " · " : ""}{property.beds}bd/{property.baths}ba · {Number(property.sqft).toLocaleString()} sqft · {fmt(property.askingPrice)}
                 </div>
               </div>
@@ -882,7 +917,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                 </div>
                 <div>
                   <div style={{ fontSize: 14, color: "#c9c0b4", lineHeight: 1.6 }}>{result.propertyOverview.summary}</div>
-                  <div style={{ fontSize: 12, color: "#6a6358", marginTop: 4 }}>{result.propertyOverview.dealGradeRationale}</div>
+                  <div style={{ fontSize: 12, color: "#b5ac9f", marginTop: 4 }}>{result.propertyOverview.dealGradeRationale}</div>
                 </div>
               </div>
             )}
@@ -912,13 +947,13 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
               <div className="da2-section">
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                   <div className="da2-section-title" style={{ margin: 0 }}>Rehab Cost Estimate</div>
-                  <span style={{ fontSize: 12, color: "#5a5549" }}>Timeline: {result.rehabEstimate.timelineWeeks} weeks</span>
+                  <span style={{ fontSize: 12, color: "#a89e92" }}>Timeline: {result.rehabEstimate.timelineWeeks} weeks</span>
                 </div>
                 <table className="da2-table">
                   <thead><tr><th>Category</th><th style={{textAlign:"right"}}>Low</th><th style={{textAlign:"right"}}>High</th><th>Notes</th></tr></thead>
                   <tbody>
                     {(result.rehabEstimate.lineItems||[]).map((it,i) => (
-                      <tr key={i}><td>{it.category}</td><td style={{textAlign:"right"}}>{fmt(it.lowEstimate)}</td><td style={{textAlign:"right"}}>{fmt(it.highEstimate)}</td><td style={{fontSize:11,color:"#5a5549"}}>{it.notes}</td></tr>
+                      <tr key={i}><td>{it.category}</td><td style={{textAlign:"right"}}>{fmt(it.lowEstimate)}</td><td style={{textAlign:"right"}}>{fmt(it.highEstimate)}</td><td style={{fontSize:11,color:"#a89e92"}}>{it.notes}</td></tr>
                     ))}
                     <tr className="total"><td>Total</td><td style={{textAlign:"right"}}>{fmt(result.rehabEstimate.totalLow)}</td><td style={{textAlign:"right"}}>{fmt(result.rehabEstimate.totalHigh)}</td><td></td></tr>
                   </tbody>
@@ -939,7 +974,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                 </div>
                 <div style={{ fontSize: 13, color: "#8a8477", lineHeight: 1.7 }}>
                   <p style={{ marginBottom: 8 }}>{result.arvAnalysis.methodology}</p>
-                  <p style={{ color: "#5a5549" }}>{result.arvAnalysis.comparableNotes}</p>
+                  <p style={{ color: "#a89e92" }}>{result.arvAnalysis.comparableNotes}</p>
                 </div>
               </div>
             )}
@@ -965,7 +1000,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                       <tr className="total"><td>Total Expenses</td><td style={{textAlign:"right"}}>{fmt(Object.values(cf.monthlyExpenses||{}).reduce((a,b)=>a+b,0))}</td></tr>
                     </tbody>
                   </table>
-                  <div style={{ fontSize: 12, color: "#5a5549", marginTop: 12 }}>{cf.assumptions}</div>
+                  <div style={{ fontSize: 12, color: "#a89e92", marginTop: 12 }}>{cf.assumptions}</div>
                 </div>
               );
             })()}
@@ -993,7 +1028,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                       <tr className="total"><td>Total Investment</td><td style={{textAlign:"right"}}>{fmt(fl.totalInvestment)}</td></tr>
                     </tbody>
                   </table>
-                  <div style={{ fontSize: 12, color: "#5a5549", marginTop: 12 }}>{fl.breakdownNotes}</div>
+                  <div style={{ fontSize: 12, color: "#a89e92", marginTop: 12 }}>{fl.breakdownNotes}</div>
                 </div>
               );
             })()}
@@ -1033,7 +1068,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                         <td style={{textAlign:"right",color:"#c07a22"}}>{fmt(r.cost)}</td>
                         <td>{r.timeline}</td>
                         <td style={{textAlign:"right",color:"#4ade80"}}>{fmt(r.arvImpact)}</td>
-                        <td style={{fontSize:11,color:"#5a5549"}}>{r.notes}</td>
+                        <td style={{fontSize:11,color:"#a89e92"}}>{r.notes}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1050,7 +1085,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                   background: "linear-gradient(135deg, rgba(192,122,34,0.04), rgba(28,47,32,0.08))",
                   border: "1px solid rgba(192,122,34,0.12)",
                 }}>
-                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, color: "#6a6358", marginBottom: 8 }}>Investor Pitch</div>
+                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, color: "#b5ac9f", marginBottom: 8 }}>Investor Pitch</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#c07a22", marginBottom: 18, fontWeight: 700 }}>{p.headline}</div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>

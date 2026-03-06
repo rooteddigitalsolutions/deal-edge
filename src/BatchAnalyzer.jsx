@@ -49,6 +49,8 @@ For other markets, use your knowledge of local costs and rents.
 
 For multi-unit properties (duplex, triplex, quad): calculate rent for ALL units combined, not just one unit. Base all cash flow and cap rate projections on total income from all units.
 
+GRADING: A = strong positive cash flow + upside. B = positive cash flow, decent returns. C = break-even or slight negative cash flow. D = negative cash flow with limited upside. F = deeply negative or fundamentally flawed. Negative cash flow properties CANNOT be A or B grade regardless of appreciation potential. Be brutally honest.
+
 Respond ONLY with valid JSON (no markdown, no backticks):
 {
   "marketOverview": "2-3 sentence overview of this market for investors",
@@ -100,12 +102,12 @@ Respond ONLY with valid JSON (no markdown, no backticks):
 
 const fmt = n => n == null || isNaN(n) ? "$0" : "$" + Math.round(n).toLocaleString();
 const fmtPct = n => n == null || isNaN(n) ? "0%" : n.toFixed(1) + "%";
-const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#6a6358");
+const gradeColor = g => ({ A: "#4ade80", B: "#60a5fa", C: "#facc15", D: "#f97316", F: "#f87171" }[g] || "#b5ac9f");
 const gradeBg = g => ({ A: "rgba(74,222,128,0.07)", B: "rgba(96,165,250,0.07)", C: "rgba(250,204,21,0.07)", D: "rgba(249,115,22,0.07)", F: "rgba(248,113,113,0.07)" }[g] || "rgba(138,132,119,0.05)");
 
 export default function BatchAnalyzer() {
   const [step, setStep] = useState("url"); // url | extracting | review | analyzing | results | detail
-  const [url, setUrl] = useState("");
+  const [urlText, setUrlText] = useState("");
   const [error, setError] = useState(null);
   const [listings, setListings] = useState([]);
   const [searchSummary, setSearchSummary] = useState("");
@@ -116,6 +118,7 @@ export default function BatchAnalyzer() {
   const [downPct, setDownPct] = useState(20);
   const [rate, setRate] = useState(7.0);
   const [maxRehab, setMaxRehab] = useState("heavy");
+  const [investmentGoal, setInvestmentGoal] = useState("balanced");
   const [sortBy, setSortBy] = useState("score");
 
   // Deep dive
@@ -165,28 +168,43 @@ export default function BatchAnalyzer() {
   };
 
   const extractListings = async () => {
-    if (!url.trim()) return;
+    const urls = urlText.split("\n").map(u => u.trim()).filter(u => u.length > 10);
+    if (urls.length === 0) return;
     setStep("extracting");
     setError(null);
-    setStatusMsg("Searching listing page...");
-    try {
-      const result = await apiCall({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 4000,
-        system: EXTRACT_SYSTEM,
-        messages: [{ role: "user", content: `Extract all property listings from this search results page: ${url.trim()}` }],
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-      });
-      if (!result.listings || result.listings.length === 0) {
-        throw new Error("No listings found at that URL. Try a different search link.");
+    const extracted = [];
+
+    for (let i = 0; i < Math.min(urls.length, 20); i++) {
+      setStatusMsg(`Fetching property ${i + 1} of ${Math.min(urls.length, 20)}...`);
+      try {
+        // Brief pause between calls to avoid rate limits
+        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+        const result = await apiCall({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 2000,
+          system: EXTRACT_SYSTEM,
+          messages: [{ role: "user", content: `Extract property details from this listing: ${urls[i]}` }],
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+        });
+        if (result.listings && result.listings.length > 0) {
+          extracted.push({ ...result.listings[0], listingUrl: urls[i] });
+        } else if (result.address) {
+          extracted.push({ ...result, listingUrl: urls[i] });
+        }
+      } catch (err) {
+        console.error(`Failed to extract ${urls[i]}:`, err);
+        // Continue with remaining URLs
       }
-      setListings(result.listings);
-      setSearchSummary(result.searchSummary || "");
-      setStep("review");
-    } catch (err) {
-      setError(err.name === "AbortError" ? "Request timed out — try a smaller search." : err.message);
-      setStep("url");
     }
+
+    if (extracted.length === 0) {
+      setError("Couldn't extract data from any of the links. Make sure they're public Zillow, Redfin, or Realtor.com listings.");
+      setStep("url");
+      return;
+    }
+    setListings(extracted);
+    setSearchSummary(`${extracted.length} of ${Math.min(urls.length, 20)} properties extracted`);
+    setStep("review");
   };
 
   const runBatchAnalysis = async () => {
@@ -210,7 +228,7 @@ export default function BatchAnalyzer() {
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
-          content: `Analyze these ${listings.length} properties as investments. IMPORTANT: Return analyses in the SAME ORDER as listed below. Include the price, beds, baths, and sqft for each property in your response.\n\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\nMax rehab willingness: ${rehabLabels[maxRehab] || maxRehab}. Flag any properties that need more rehab than this — they may still be good deals but note the rehab exceeds the investor's preference.\n\n${listingSummary}`
+          content: `Analyze these ${listings.length} properties as investments. IMPORTANT: Return analyses in the SAME ORDER as listed below. Include the price, beds, baths, and sqft for each property in your response.\n\nInvestor's primary goal: ${investmentGoal}. ${investmentGoal === "cashflow" ? "Grade primarily on monthly cash flow. Negative cash flow = C or below." : investmentGoal === "flip" ? "Grade primarily on flip profit margin." : investmentGoal === "appreciation" ? "Grade on ARV upside and appreciation. Still penalize heavy cash flow losses." : "Grade on all factors equally. Negative cash flow is a serious negative."}\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\nMax rehab willingness: ${rehabLabels[maxRehab] || maxRehab}. Flag any properties that need more rehab than this.\n\n${listingSummary}`
         }],
       });
 
@@ -287,7 +305,7 @@ export default function BatchAnalyzer() {
           background: linear-gradient(180deg, rgba(232,137,12,0.04) 0%, transparent 100%);
           display: flex; justify-content: space-between; align-items: center; }
         .ba-header h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 800; color: #e8890c; }
-        .ba-header .sub { font-size: 12px; color: #5a5549; margin-top: 2px; }
+        .ba-header .sub { font-size: 12px; color: #a89e92; margin-top: 2px; }
         .ba-body { max-width: 960px; margin: 0 auto; padding: 24px 36px 60px; }
 
         .ba-url-box { background: rgba(232,137,12,0.03); border: 2px dashed rgba(232,137,12,0.15);
@@ -297,7 +315,7 @@ export default function BatchAnalyzer() {
           border: 1px solid rgba(232,137,12,0.15); border-radius: 8px; color: #e8e0d4; font-size: 15px;
           font-family: 'DM Sans', sans-serif; outline: none; margin: 16px 0; }
         .ba-url-input:focus { border-color: #e8890c; }
-        .ba-url-input::placeholder { color: #3d3a35; }
+        .ba-url-input::placeholder { color: #8a8477; }
 
         .ba-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
           padding: 13px 28px; border: none; border-radius: 7px; font-size: 14px; font-weight: 600;
@@ -321,7 +339,7 @@ export default function BatchAnalyzer() {
         .ba-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 12px 0; }
         .ba-metric { text-align: center; padding: 10px 8px; background: rgba(232,137,12,0.03); border-radius: 6px; }
         .ba-metric .val { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: #e8890c; }
-        .ba-metric .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #5a5549; margin-top: 2px; }
+        .ba-metric .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #a89e92; margin-top: 2px; }
 
         .ba-grade { width: 52px; height: 52px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
           font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 900; flex-shrink: 0; }
@@ -333,7 +351,7 @@ export default function BatchAnalyzer() {
 
         .ba-sort { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
         .ba-sort-btn { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 500;
-          border: 1px solid rgba(232,137,12,0.12); color: #6a6358; cursor: pointer;
+          border: 1px solid rgba(232,137,12,0.12); color: #b5ac9f; cursor: pointer;
           background: transparent; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
         .ba-sort-btn:hover { border-color: rgba(232,137,12,0.3); color: #e8890c; }
         .ba-sort-btn.active { background: rgba(232,137,12,0.1); border-color: #e8890c; color: #e8890c; font-weight: 600; }
@@ -351,13 +369,13 @@ export default function BatchAnalyzer() {
 
         .ba-strat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
         .ba-strat-card { padding: 16px; border-radius: 8px; text-align: center; border: 1px solid rgba(232,137,12,0.08); }
-        .ba-strat-card .name { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #5a5549; margin-bottom: 6px; }
+        .ba-strat-card .name { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #a89e92; margin-bottom: 6px; }
         .ba-strat-card .grade { font-family: 'Playfair Display', serif; font-size: 32px; font-weight: 900; line-height: 1; }
         .ba-strat-card .verd { font-size: 12px; color: #8a8477; margin-top: 8px; line-height: 1.5; }
 
         .ba-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .ba-table th { text-align: left; padding: 7px 10px; font-size: 10px; font-weight: 700;
-          text-transform: uppercase; letter-spacing: 1px; color: #5a5549; border-bottom: 1px solid rgba(232,137,12,0.1); }
+          text-transform: uppercase; letter-spacing: 1px; color: #a89e92; border-bottom: 1px solid rgba(232,137,12,0.1); }
         .ba-table td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.025); color: #a89e92; }
 
         .ba-fin-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
@@ -366,12 +384,12 @@ export default function BatchAnalyzer() {
         .ba-fin-card:hover { border-color: rgba(232,137,12,0.3); }
         .ba-fin-card.active { border-color: #e8890c; background: rgba(232,137,12,0.06); }
         .ba-fin-card .name { font-size: 13px; font-weight: 600; color: #d8d0c4; }
-        .ba-fin-card .desc { font-size: 10px; color: #5a5549; }
+        .ba-fin-card .desc { font-size: 10px; color: #a89e92; }
         .ba-input { width: 100%; padding: 9px 12px; background: rgba(255,255,255,0.03);
           border: 1px solid rgba(232,137,12,0.12); border-radius: 5px; color: #d8d0c4; font-size: 13px;
           font-family: 'DM Sans', sans-serif; outline: none; }
         .ba-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 1.4px; color: #5a5549; margin-bottom: 5px; }
+          letter-spacing: 1.4px; color: #a89e92; margin-bottom: 5px; }
 
         @media (max-width: 640px) {
           .ba-body { padding: 16px; }
@@ -384,38 +402,48 @@ export default function BatchAnalyzer() {
       <div className="ba-header">
         <div>
           <h1>Batch Analyzer</h1>
-          <div className="sub">Paste a Zillow or Redfin search link → AI analyzes every listing as an investment</div>
+          <div className="sub">Paste up to 20 listing links → AI scores and ranks every property</div>
         </div>
         {step !== "url" && (
-          <button className="ba-btn ba-btn-ghost ba-btn-sm" onClick={() => { setStep("url"); setListings([]); setAnalyses([]); setUrl(""); setError(null); }}>
+          <button className="ba-btn ba-btn-ghost ba-btn-sm" onClick={() => { setStep("url"); setListings([]); setAnalyses([]); setUrlText(""); setError(null); }}>
             ← New Search
           </button>
         )}
       </div>
 
       <div className="ba-body">
-        {/* STEP 1: URL */}
+        {/* STEP 1: PASTE LINKS */}
         {step === "url" && (
           <>
             <div className="ba-url-box">
-              <div style={{ fontSize: 28, marginBottom: 4 }}>🔍</div>
-              <div style={{ fontSize: 15, color: "#d8d0c4", fontWeight: 500 }}>Paste a search results link</div>
-              <div style={{ fontSize: 12, color: "#5a5549", marginTop: 4 }}>Run a search on Zillow or Redfin, then copy the URL from your browser and paste it here</div>
-              <input className="ba-url-input"
-                placeholder="https://www.zillow.com/knoxville-tn/?searchQueryState=..."
-                value={url}
-                onChange={e => setUrl(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && extractListings()} />
-              <div style={{ fontSize: 11, color: "#4a4540" }}>
-                Works with <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Zillow</span>
-                <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Redfin</span>
-                <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Realtor.com</span>
+              <div style={{ fontSize: 28, marginBottom: 4 }}>🔗</div>
+              <div style={{ fontSize: 15, color: "#d8d0c4", fontWeight: 500 }}>Paste property listing links</div>
+              <div style={{ fontSize: 12, color: "#b5ac9f", marginTop: 4 }}>
+                One link per line — up to 20 properties. Find listings on Zillow, Redfin, or Realtor.com and paste the URLs here.
+              </div>
+              <textarea
+                className="ba-url-input"
+                style={{ minHeight: 180, resize: "vertical", lineHeight: 1.8, fontFamily: "'DM Sans', sans-serif", fontSize: 13 }}
+                placeholder={"https://www.zillow.com/homedetails/123-main-st/12345_zpid/\nhttps://www.zillow.com/homedetails/456-oak-ave/67890_zpid/\nhttps://www.redfin.com/TN/Knoxville/789-elm-st/home/12345\n..."}
+                value={urlText}
+                onChange={e => setUrlText(e.target.value)}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: "#b5ac9f" }}>
+                  Works with <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Zillow</span>
+                  <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Redfin</span>
+                  <span style={{ padding: "2px 8px", background: "rgba(232,137,12,0.05)", borderRadius: 10, border: "1px solid rgba(232,137,12,0.08)", margin: "0 2px" }}>Realtor.com</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#e8890c", fontWeight: 600 }}>
+                  {urlText.split("\n").filter(u => u.trim().length > 10).length} / 20 links
+                </div>
               </div>
             </div>
             {error && <div className="ba-error">{error}</div>}
-            <button className="ba-btn ba-btn-primary" onClick={extractListings} disabled={!url.trim()}
+            <button className="ba-btn ba-btn-primary" onClick={extractListings}
+              disabled={urlText.split("\n").filter(u => u.trim().length > 10).length === 0}
               style={{ width: "100%", padding: 14, fontSize: 15 }}>
-              ⚡ Find Listings
+              ⚡ Fetch {urlText.split("\n").filter(u => u.trim().length > 10).length} Properties
             </button>
           </>
         )}
@@ -425,7 +453,7 @@ export default function BatchAnalyzer() {
           <div style={{ textAlign: "center", padding: 60 }}>
             <div className="ba-spinner" />
             <div style={{ color: "#8a8477", fontSize: 14 }}>{statusMsg}</div>
-            <div style={{ color: "#4a4540", fontSize: 12, marginTop: 4 }}>This can take 30-60 seconds</div>
+            <div style={{ color: "#a89e92", fontSize: 12, marginTop: 4 }}>This can take 30-60 seconds</div>
             <button className="ba-btn ba-btn-ghost ba-btn-sm" onClick={() => { setStep("url"); setError("Cancelled."); }} style={{ marginTop: 20 }}>Cancel</button>
           </div>
         )}
@@ -437,7 +465,7 @@ export default function BatchAnalyzer() {
               <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#e8890c", fontWeight: 700 }}>
                 {listings.length} Listings Found
               </span>
-              {searchSummary && <div style={{ fontSize: 13, color: "#5a5549", marginTop: 4 }}>{searchSummary}</div>}
+              {searchSummary && <div style={{ fontSize: 13, color: "#a89e92", marginTop: 4 }}>{searchSummary}</div>}
             </div>
 
             {/* Listing preview cards */}
@@ -451,7 +479,7 @@ export default function BatchAnalyzer() {
                 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#d8d0c4" }}>{l.address}</div>
-                    <div style={{ fontSize: 11, color: "#5a5549" }}>
+                    <div style={{ fontSize: 11, color: "#a89e92" }}>
                       {l.city}, {l.state} · {l.beds}bd/{l.baths}ba · {l.sqft?.toLocaleString()} sqft
                     </div>
                   </div>
@@ -462,10 +490,37 @@ export default function BatchAnalyzer() {
               ))}
             </div>
 
+            {/* Investment Goal */}
+            <div className="ba-section">
+              <div className="ba-section-title">Investment Goal</div>
+              <div style={{ fontSize: 11, color: "#b5ac9f", marginBottom: 10 }}>
+                This changes how properties are graded — a great cash flow property might be a bad flip.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+                {[
+                  { value: "cashflow", label: "Cash Flow", desc: "Monthly income first", icon: "💰" },
+                  { value: "appreciation", label: "Appreciation", desc: "Long-term growth", icon: "📈" },
+                  { value: "flip", label: "Flip", desc: "Buy-rehab-sell profit", icon: "🔨" },
+                  { value: "balanced", label: "Balanced", desc: "All strategies equal", icon: "⚖️" },
+                ].map(g => (
+                  <div key={g.value} onClick={() => setInvestmentGoal(g.value)} style={{
+                    padding: "12px 10px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `1px solid ${investmentGoal === g.value ? "#e8890c" : "rgba(232,137,12,0.1)"}`,
+                    background: investmentGoal === g.value ? "rgba(232,137,12,0.06)" : "rgba(255,255,255,0.015)",
+                    transition: "all 0.2s",
+                  }}>
+                    <div style={{ fontSize: 18, marginBottom: 4 }}>{g.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#d8d0c4" }}>{g.label}</div>
+                    <div style={{ fontSize: 10, color: "#b5ac9f", marginTop: 2 }}>{g.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Rehab Scope */}
             <div className="ba-section">
               <div className="ba-section-title">Max Rehab You'll Take On</div>
-              <div style={{ fontSize: 11, color: "#5a5549", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: "#a89e92", marginBottom: 10 }}>
                 The AI estimates each property's rehab level based on age, price vs. comps, and listing details. Properties exceeding your tolerance will be flagged.
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
@@ -483,7 +538,7 @@ export default function BatchAnalyzer() {
                   }}>
                     <div style={{ fontSize: 18, marginBottom: 4 }}>{r.icon}</div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "#d8d0c4" }}>{r.label}</div>
-                    <div style={{ fontSize: 10, color: "#5a5549", marginTop: 2 }}>{r.desc}</div>
+                    <div style={{ fontSize: 10, color: "#a89e92", marginTop: 2 }}>{r.desc}</div>
                   </div>
                 ))}
               </div>
@@ -532,7 +587,7 @@ export default function BatchAnalyzer() {
           <div style={{ textAlign: "center", padding: 60 }}>
             <div className="ba-spinner" />
             <div style={{ color: "#8a8477", fontSize: 14 }}>{statusMsg}</div>
-            <div style={{ color: "#4a4540", fontSize: 12, marginTop: 4 }}>Scoring investment potential across all strategies</div>
+            <div style={{ color: "#a89e92", fontSize: 12, marginTop: 4 }}>Scoring investment potential across all strategies</div>
           </div>
         )}
 
@@ -544,7 +599,7 @@ export default function BatchAnalyzer() {
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#e8890c", fontWeight: 700 }}>
                   Investment Rankings
                 </span>
-                <div style={{ fontSize: 12, color: "#5a5549", marginTop: 4 }}>{analyses.length} properties analyzed · Click any for deep dive</div>
+                <div style={{ fontSize: 12, color: "#a89e92", marginTop: 4 }}>{analyses.length} properties analyzed · Click any for deep dive</div>
               </div>
               <button className="ba-btn ba-btn-ghost ba-btn-sm" onClick={() => setStep("review")}>← Change Terms</button>
             </div>
@@ -558,7 +613,7 @@ export default function BatchAnalyzer() {
 
             {/* Sort controls */}
             <div className="ba-sort">
-              <span style={{ fontSize: 11, color: "#5a5549", padding: "6px 0" }}>Sort by:</span>
+              <span style={{ fontSize: 11, color: "#a89e92", padding: "6px 0" }}>Sort by:</span>
               {[
                 { id: "score", label: "Investment Score" },
                 { id: "price", label: "Price ↑" },
@@ -576,10 +631,10 @@ export default function BatchAnalyzer() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ color: "#3d3a35", fontSize: 12, fontWeight: 700 }}>#{idx + 1}</span>
+                      <span style={{ color: "#8a8477", fontSize: 12, fontWeight: 700 }}>#{idx + 1}</span>
                       <span style={{ fontSize: 15, fontWeight: 600, color: "#e8e0d4" }}>{p.address}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#5a5549", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: "#a89e92", marginTop: 2 }}>
                       {p.city}, {p.state} · {p.beds}bd/{p.baths}ba · {p.sqft?.toLocaleString()} sqft
                     </div>
                   </div>
@@ -624,7 +679,7 @@ export default function BatchAnalyzer() {
               <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: "#e8e0d4" }}>
                 {selectedProperty.address}
               </div>
-              <div style={{ fontSize: 13, color: "#5a5549", marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: "#a89e92", marginTop: 4 }}>
                 {selectedProperty.city}, {selectedProperty.state} · {selectedProperty.beds}bd/{selectedProperty.baths}ba · {selectedProperty.sqft?.toLocaleString()} sqft · {fmt(selectedProperty.price)}
               </div>
             </div>
@@ -632,7 +687,7 @@ export default function BatchAnalyzer() {
             {deepLoading && (
               <div style={{ textAlign: "center", padding: 60 }}>
                 <div className="ba-spinner" />
-                <div style={{ color: "#6a6358", fontSize: 13 }}>Running deep investment analysis...</div>
+                <div style={{ color: "#b5ac9f", fontSize: 13 }}>Running deep investment analysis...</div>
               </div>
             )}
 
@@ -651,7 +706,7 @@ export default function BatchAnalyzer() {
                     }}>{deepAnalysis.overview.dealGrade}</div>
                     <div>
                       <div style={{ fontSize: 14, color: "#c9c0b4", lineHeight: 1.6 }}>{deepAnalysis.overview.summary}</div>
-                      <div style={{ fontSize: 12, color: "#5a5549", marginTop: 4 }}>{deepAnalysis.overview.rationale}</div>
+                      <div style={{ fontSize: 12, color: "#a89e92", marginTop: 4 }}>{deepAnalysis.overview.rationale}</div>
                     </div>
                   </div>
                 )}
