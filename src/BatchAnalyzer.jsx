@@ -161,7 +161,7 @@ export default function BatchAnalyzer() {
     setStatusMsg("Searching listing page...");
     try {
       const result = await apiCall({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 4000,
         system: EXTRACT_SYSTEM,
         messages: [{ role: "user", content: `Extract all property listings from this search results page: ${url.trim()}` }],
@@ -195,7 +195,7 @@ export default function BatchAnalyzer() {
 
       const rehabLabels = { turnkey: "Turnkey/Cosmetic only", light: "Light rehab", moderate: "Moderate rehab", heavy: "Heavy/Gut rehab" };
       const result = await apiCall({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 4000,
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
@@ -225,8 +225,9 @@ export default function BatchAnalyzer() {
         system: DEEP_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
-          content: `Full investment analysis:\n\n${property.address}, ${property.city}, ${property.state} ${property.zip}\nPrice: $${property.price?.toLocaleString()} | ${property.beds}bd/${property.baths}ba | ${property.sqft} sqft\nBuilt: ${property.yearBuilt || "Unknown"} | Condition: ${property.conditionEstimate || "Unknown"}\n${property.description || ""}\n\nFinancing: ${financing}, ${downPct}% down, ${rate}% rate\nMax rehab willingness: ${maxRehab}`
+          content: `Full investment analysis:\n\n${property.address}, ${property.city || ""}, ${property.state || ""} ${property.zip || ""}\nPrice: $${(property.price || 0).toLocaleString()} | ${property.beds || "?"}bd/${property.baths || "?"}ba | ${property.sqft || "?"} sqft\nBuilt: ${property.yearBuilt || "Unknown"} | Condition: ${property.conditionEstimate || property.rehabLevel || "Unknown"}\nLot: ${property.lotAcres ? property.lotAcres + " acres" : "Unknown"}\nDays on Market: ${property.daysOnMarket || "Unknown"}\n${property.description || ""}\n${property.listingUrl ? "Listing URL: " + property.listingUrl : ""}\n\nBatch analysis scored this ${property.investmentScore || "?"}/100 (${property.grade || "?"}) — best strategy: ${property.bestStrategy || "Unknown"}\n\nFinancing: ${financing}, ${downPct}% down, ${rate}% rate\nMax rehab willingness: ${maxRehab}`
         }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
       });
       setDeepAnalysis(result);
     } catch (err) {
@@ -236,9 +237,18 @@ export default function BatchAnalyzer() {
   };
 
   const getSortedResults = () => {
-    const merged = analyses.map(a => {
-      const listing = listings.find(l => l.address === a.address) || {};
-      return { ...listing, ...a };
+    const merged = analyses.map((a, idx) => {
+      // Try exact match first, then fuzzy match, then fall back to index
+      let listing = listings.find(l => l.address === a.address);
+      if (!listing) {
+        const aAddr = (a.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        listing = listings.find(l => {
+          const lAddr = (l.address || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          return lAddr === aAddr || lAddr.includes(aAddr) || aAddr.includes(lAddr);
+        });
+      }
+      if (!listing && idx < listings.length) listing = listings[idx];
+      return { ...(listing || {}), ...a, price: (listing || {}).price || a.price || 0 };
     });
     if (sortBy === "score") return merged.sort((a, b) => (b.investmentScore || 0) - (a.investmentScore || 0));
     if (sortBy === "price") return merged.sort((a, b) => (a.price || 0) - (b.price || 0));
@@ -543,9 +553,7 @@ export default function BatchAnalyzer() {
             </div>
 
             {getSortedResults().map((p, idx) => (
-              <div key={idx} className="ba-card" onClick={() => runDeepDive(
-                listings.find(l => l.address === p.address) || p, p
-              )}>
+              <div key={idx} className="ba-card" onClick={() => runDeepDive(p, p)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
