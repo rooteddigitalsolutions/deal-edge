@@ -105,6 +105,7 @@ export default function BatchAnalyzer() {
   const [financing, setFinancing] = useState("conventional");
   const [downPct, setDownPct] = useState(20);
   const [rate, setRate] = useState(7.0);
+  const [maxRehab, setMaxRehab] = useState("heavy");
   const [sortBy, setSortBy] = useState("score");
 
   // Deep dive
@@ -112,28 +113,45 @@ export default function BatchAnalyzer() {
   const [deepAnalysis, setDeepAnalysis] = useState(null);
   const [deepLoading, setDeepLoading] = useState(false);
 
-  const apiCall = async (body) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-    const response = await fetch("/api/anthropic", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`API returned ${response.status}: ${errText.slice(0, 300)}`);
+  const apiCall = async (body, retries = 3) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 120000);
+        const response = await fetch("/api/anthropic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        // Retry on rate limit
+        if (response.status === 429) {
+          const waitSec = Math.min(15 * (attempt + 1), 45);
+          setStatusMsg(`Rate limited — waiting ${waitSec}s before retry (${attempt + 1}/${retries})...`);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          continue;
+        }
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`API returned ${response.status}: ${errText.slice(0, 300)}`);
+        }
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+        const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
+        if (!text) throw new Error("No text in response");
+        const clean = text.replace(/```json|```/g, "").trim();
+        const jsonMatch = clean.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Could not parse response");
+        return JSON.parse(jsonMatch[0]);
+      } catch (err) {
+        if (err.name === "AbortError") throw new Error("Request timed out");
+        if (attempt === retries - 1) throw err;
+      }
     }
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
-    if (!text) throw new Error("No text in response");
-    const clean = text.replace(/```json|```/g, "").trim();
-    const jsonMatch = clean.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Could not parse response");
-    return JSON.parse(jsonMatch[0]);
+    throw new Error("Failed after multiple retries");
   };
 
   const extractListings = async () => {
@@ -163,20 +181,26 @@ export default function BatchAnalyzer() {
 
   const runBatchAnalysis = async () => {
     setStep("analyzing");
-    setStatusMsg(`Analyzing ${listings.length} properties...`);
+    setStatusMsg("Preparing analysis...");
     setError(null);
+
+    // Brief pause to avoid rate limits from the extraction call
+    await new Promise(r => setTimeout(r, 3000));
+    setStatusMsg(`Analyzing ${listings.length} properties...`);
+
     try {
       const listingSummary = listings.map((l, i) =>
         `${i + 1}. ${l.address}, ${l.city}, ${l.state} ${l.zip} — $${l.price?.toLocaleString()} — ${l.beds}bd/${l.baths}ba — ${l.sqft} sqft — Built ${l.yearBuilt || "unknown"} — ${l.conditionEstimate || "unknown"} condition — ${l.description || ""}`
       ).join("\n");
 
+      const rehabLabels = { turnkey: "Turnkey/Cosmetic only", light: "Light rehab", moderate: "Moderate rehab", heavy: "Heavy/Gut rehab" };
       const result = await apiCall({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4000,
         system: BATCH_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
-          content: `Analyze these ${listings.length} properties as investments.\n\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\n\n${listingSummary}`
+          content: `Analyze these ${listings.length} properties as investments.\n\nInvestor financing: ${financing}, ${downPct}% down, ${rate}% rate.\nMax rehab willingness: ${rehabLabels[maxRehab] || maxRehab}. Flag any properties that need more rehab than this — they may still be good deals but note the rehab exceeds the investor's preference.\n\n${listingSummary}`
         }],
       });
 
@@ -201,7 +225,7 @@ export default function BatchAnalyzer() {
         system: DEEP_ANALYSIS_SYSTEM,
         messages: [{
           role: "user",
-          content: `Full investment analysis:\n\n${property.address}, ${property.city}, ${property.state} ${property.zip}\nPrice: $${property.price?.toLocaleString()} | ${property.beds}bd/${property.baths}ba | ${property.sqft} sqft\nBuilt: ${property.yearBuilt || "Unknown"} | Condition: ${property.conditionEstimate || "Unknown"}\n${property.description || ""}\n\nFinancing: ${financing}, ${downPct}% down, ${rate}% rate`
+          content: `Full investment analysis:\n\n${property.address}, ${property.city}, ${property.state} ${property.zip}\nPrice: $${property.price?.toLocaleString()} | ${property.beds}bd/${property.baths}ba | ${property.sqft} sqft\nBuilt: ${property.yearBuilt || "Unknown"} | Condition: ${property.conditionEstimate || "Unknown"}\n${property.description || ""}\n\nFinancing: ${financing}, ${downPct}% down, ${rate}% rate\nMax rehab willingness: ${maxRehab}`
         }],
       });
       setDeepAnalysis(result);
@@ -407,6 +431,33 @@ export default function BatchAnalyzer() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Rehab Scope */}
+            <div className="ba-section">
+              <div className="ba-section-title">Max Rehab You'll Take On</div>
+              <div style={{ fontSize: 11, color: "#5a5549", marginBottom: 10 }}>
+                The AI estimates each property's rehab level based on age, price vs. comps, and listing details. Properties exceeding your tolerance will be flagged.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+                {[
+                  { value: "turnkey", label: "Turnkey", desc: "Paint & fixtures", icon: "✦" },
+                  { value: "light", label: "Light", desc: "Flooring, refresh", icon: "◈" },
+                  { value: "moderate", label: "Moderate", desc: "Kitchen, bath, mechanicals", icon: "◆" },
+                  { value: "heavy", label: "Heavy / Gut", desc: "Full renovation", icon: "⬥" },
+                ].map(r => (
+                  <div key={r.value} onClick={() => setMaxRehab(r.value)} style={{
+                    padding: "12px 10px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `1px solid ${maxRehab === r.value ? "#e8890c" : "rgba(232,137,12,0.1)"}`,
+                    background: maxRehab === r.value ? "rgba(232,137,12,0.06)" : "rgba(255,255,255,0.015)",
+                    transition: "all 0.2s",
+                  }}>
+                    <div style={{ fontSize: 18, marginBottom: 4 }}>{r.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#d8d0c4" }}>{r.label}</div>
+                    <div style={{ fontSize: 10, color: "#5a5549", marginTop: 2 }}>{r.desc}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Financing */}

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import DealAnalyzerV2 from "./DealAnalyzer.jsx";
-import PropertyScanner from "./PropertyScanner.jsx";
 import BatchAnalyzer from "./BatchAnalyzer.jsx";
 
 const TOOLS = [
