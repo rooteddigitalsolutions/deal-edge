@@ -23,6 +23,80 @@ const FINANCING = [
 ];
 
 /* ─── URL EXTRACTION PROMPT ─── */
+/* ─── URL PARSING UTILITIES ─── */
+const extractZpid = (url) => {
+  const m = url.match(/\/(\d{7,12})_zpid/);
+  return m ? m[1] : null;
+};
+
+const extractAddressFromUrl = (url) => {
+  // Redfin: /TN/Knoxville/2414-Wilson-Ave-37915/
+  // Realtor: /2414-Wilson-Ave_Knoxville_TN_37915
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    // Try to find something that looks like a street address segment
+    const addrSegment = parts.find(p => /\d/.test(p) && p.length > 5);
+    if (addrSegment) {
+      return addrSegment.replace(/-/g, " ").replace(/_/g, " ").trim();
+    }
+  } catch {}
+  return null;
+};
+
+// Map Zillow API homeType to our property type labels
+const mapHomeType = (t) => {
+  if (!t) return "Single Family";
+  const map = {
+    SINGLE_FAMILY: "Single Family",
+    MULTI_FAMILY: "Duplex",
+    CONDO: "Condo",
+    TOWNHOUSE: "Townhouse",
+    MANUFACTURED: "Single Family",
+    LOT: "Single Family",
+  };
+  return map[t.toUpperCase()] || "Single Family";
+};
+
+// Map Zillow data → our property state shape
+const mapZillowToProperty = (z) => {
+  const addr = z.address || {};
+  const lotSqft = z.lotAreaValue && z.lotAreaUnit === "sqft"
+    ? z.lotAreaValue / 43560
+    : z.lotAreaValue || null;
+
+  return {
+    address: addr.streetAddress || z.streetAddress || "",
+    city: addr.city || z.city || "",
+    state: addr.state || z.state || "TN",
+    zip: addr.zipcode || z.zipcode || "",
+    neighborhood: addr.neighborhood || addr.subdivision || addr.community || "",
+    askingPrice: z.price || z.listPrice || "",
+    beds: z.bedrooms || 3,
+    baths: z.bathrooms || 2,
+    sqft: z.livingArea || z.livingAreaValue || "",
+    yearBuilt: z.yearBuilt || "",
+    lotAcres: lotSqft ? parseFloat(lotSqft.toFixed(3)) : "",
+    propertyType: mapHomeType(z.homeType),
+    daysOnMarket: z.daysOnZillow || z.daysOnMarket || "",
+    priceReductions: z.priceReduction ? 1 : 0,
+    hoaFees: z.monthlyHoaFee || "",
+    taxesAnnual: z.propertyTaxRate && z.price
+      ? Math.round(z.price * (z.propertyTaxRate / 100))
+      : "",
+    description: z.description || z.homeDescription || "",
+    features: z.resoFacts?.appliances || [],
+    conditionEstimate: "moderate",
+    source: "zillow",
+    // Bonus: stash rentZestimate so we can use it for comps
+    _rentZestimate: z.rentZestimate || null,
+    _zestimate: z.zestimate || null,
+    _homeStatus: z.homeStatus || "",
+    _zpid: z.zpid || "",
+  };
+};
+
+/* ─── FALLBACK EXTRACT SYSTEM (used only for non-Zillow URLs if Zillow API misses) ─── */
 const EXTRACT_SYSTEM = `You are a real estate data extraction assistant. The user will give you a property listing URL. Use web search to find the property details from that URL or address.
 
 Extract and return ONLY valid JSON (no markdown, no backticks):
@@ -49,7 +123,7 @@ Extract and return ONLY valid JSON (no markdown, no backticks):
   "source": "zillow|redfin|realtor|other"
 }
 
-If you cannot find the exact listing, search for the address and fill in what you can find. Be accurate — do not fabricate data.`;
+IMPORTANT: Only return data you actually found. Do not use sold prices as the asking price — look specifically for the current active listing price. Be accurate — do not fabricate data.`;
 
 /* ─── ANALYSIS PROMPT ─── */
 const ANALYSIS_SYSTEM = `You are an expert real estate investment analyst with deep knowledge of markets across the United States. Provide detailed, realistic deal analysis tailored to the specific market the property is in.
@@ -271,7 +345,82 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
     if (!url.trim()) return;
     setFetching(true);
     setFetchError(null);
+    setRentComps(null);
 
+    const trimmedUrl = url.trim();
+    const isZillow = trimmedUrl.includes("zillow.com");
+    const isRedfin = trimmedUrl.includes("redfin.com");
+    const isRealtor = trimmedUrl.includes("realtor.com");
+
+    // ── Path 1: Zillow URL → extract zpid → hit Zillow API directly ──
+    if (isZillow) {
+      const zpid = extractZpid(trimmedUrl);
+      if (zpid) {
+        try {
+          const response = await fetch("/api/zillow", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ zpid }),
+          });
+          const data = await response.json();
+
+          if (!response.ok || data.error) {
+            // Zillow API error — fall through to Claude fallback below
+            throw new Error(data.error || `Zillow API ${response.status}`);
+          }
+
+          const mapped = mapZillowToProperty(data);
+
+          // If the listing is SOLD (not active), warn but still load it
+          const isActive = !["SOLD", "RECENTLY_SOLD", "OFF_MARKET"].includes(
+            (mapped._homeStatus || "").toUpperCase()
+          );
+
+          setProperty({
+            ...mapped,
+            // Don't expose internal fields to the form
+            _rentZestimate: undefined, _zestimate: undefined,
+            _homeStatus: undefined, _zpid: undefined,
+          });
+          setRehabLevel(mapped.conditionEstimate || "moderate");
+
+          // Auto-populate rent comps from Zillow Rent Zestimate if available
+          if (mapped._rentZestimate) {
+            setRentComps({
+              zillowRentZestimate: mapped._rentZestimate,
+              rentometerMedian: null,
+              marketRentLow: Math.round(mapped._rentZestimate * 0.92),
+              marketRentHigh: Math.round(mapped._rentZestimate * 1.08),
+              marketRentMid: mapped._rentZestimate,
+              confidence: "high",
+              dataSource: `Zillow Rent Zestimate — fetched live from Zillow API (zpid: ${zpid})`,
+              activeComps: [],
+              onePercentTest: mapped.askingPrice
+                ? `$${mapped._rentZestimate}/mo ÷ $${Number(mapped.askingPrice).toLocaleString()} = ${((mapped._rentZestimate / mapped.askingPrice) * 100).toFixed(2)}% ${(mapped._rentZestimate / mapped.askingPrice) >= 0.01 ? "✓ Passes" : "✗ Does not pass"} the 1% rule.`
+                : null,
+            });
+          }
+
+          if (!isActive) {
+            setFetchError(`⚠ This property shows as ${mapped._homeStatus} on Zillow. The price shown may be a past sale price, not an active listing. Verify the asking price before continuing.`);
+          }
+
+          setStep("review");
+          setFetching(false);
+          return;
+        } catch (zillowErr) {
+          // If it's a missing API key error, surface it clearly
+          if (zillowErr.message?.includes("RAPIDAPI_KEY")) {
+            setFetchError("Zillow API key not configured. Add RAPIDAPI_KEY to your Netlify environment variables — see setup guide. Falling back to AI extraction (less accurate).");
+          } else {
+            setFetchError(`Zillow API: ${zillowErr.message}. Falling back to AI extraction.`);
+          }
+          // Fall through to Claude fallback
+        }
+      }
+    }
+
+    // ── Path 2: Redfin/Realtor or Zillow API failed → Claude web search fallback ──
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
@@ -283,7 +432,7 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2000,
           system: EXTRACT_SYSTEM,
-          messages: [{ role: "user", content: `Extract property details from this listing: ${url.trim()}` }],
+          messages: [{ role: "user", content: `Extract property details from this listing. IMPORTANT: Find the CURRENT ACTIVE LISTING PRICE, not any past sold price. URL: ${trimmedUrl}` }],
           tools: [{ type: "web_search_20250305", name: "web_search" }],
         }),
         signal: controller.signal,
@@ -297,16 +446,10 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
       }
 
       const data = await response.json();
-
-      if (data.error) {
-        throw new Error(`API error: ${data.error.message || JSON.stringify(data.error)}`);
-      }
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
 
       const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("") || "";
-
-      if (!text) {
-        throw new Error("No text in response. You can enter details manually.");
-      }
+      if (!text) throw new Error("No text in response. Enter details manually.");
 
       const clean = text.replace(/```json|```/g, "").trim();
       const jsonMatch = clean.match(/\{[\s\S]*\}/);
@@ -333,19 +476,16 @@ export default function DealAnalyzerV2({ initialData, onInitialDataConsumed }) {
         description: parsed.description || "",
         features: parsed.features || [],
         conditionEstimate: parsed.conditionEstimate || "moderate",
-        source: parsed.source || "",
+        source: `${isRedfin ? "redfin" : isRealtor ? "realtor" : "other"} (AI extracted — verify price)`,
       });
       setRehabLevel(parsed.conditionEstimate || "moderate");
       setStep("review");
     } catch (err) {
       console.error("Fetch error:", err);
-      let msg = "Couldn't extract property data.";
-      if (err.name === "AbortError") {
-        msg = "Request timed out. The listing search took too long.";
-      } else if (err.message) {
-        msg = err.message;
-      }
-      setFetchError(msg + " You can enter details manually below.");
+      const msg = err.name === "AbortError"
+        ? "Request timed out."
+        : err.message || "Couldn't extract property data.";
+      setFetchError(msg + " Please verify all fields below before running analysis.");
       setStep("review");
     }
     setFetching(false);
@@ -743,7 +883,7 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
                 onKeyDown={e => e.key === "Enter" && fetchProperty()}
               />
               <div className="da2-url-sources">
-                Works with <span>Zillow</span> <span>Redfin</span> <span>Realtor.com</span> <span>Any listing URL</span>
+                <span style={{ color: "#4ade80" }}>⚡ Zillow</span> (live API — most accurate) <span>Redfin</span> <span>Realtor.com</span> <span>Any listing URL</span>
               </div>
             </div>
 
@@ -780,9 +920,15 @@ Include BRRRR analysis in addition to Buy & Hold and Flip.`;
             {fetchError && <div className="da2-error">{fetchError}</div>}
 
             {property.source && (
-              <div className="da2-fetched-badge">
-                ✓ Auto-filled from {property.source}
-                <span style={{ color: "#a89e92", marginLeft: 4 }}>— verify & edit below</span>
+              <div className="da2-fetched-badge" style={{
+                background: property.source === "zillow"
+                  ? "rgba(74,222,128,0.06)" : "rgba(250,204,21,0.06)",
+                color: property.source === "zillow" ? "#4ade80" : "#facc15",
+                border: `1px solid ${property.source === "zillow" ? "rgba(74,222,128,0.12)" : "rgba(250,204,21,0.12)"}`,
+              }}>
+                {property.source === "zillow"
+                  ? "✓ Live data from Zillow API — price, beds, baths, taxes, HOA are accurate"
+                  : `⚠ AI extracted from ${property.source} — verify asking price before continuing`}
               </div>
             )}
 
