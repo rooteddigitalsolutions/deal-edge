@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DealAnalyzerV2 from "./DealAnalyzer";
 import BatchAnalyzer from "./BatchAnalyzer";
+import MontaukTools from "./MontaukTools";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("deal");
@@ -10,7 +11,6 @@ export default function App() {
   const handleRunInDealAnalyzer = (propertyData) => {
     setPendingDealData(propertyData);
     setActiveTab("deal");
-    // Brief flash to signal the tab switch
     setFlashBatch(true);
     setTimeout(() => setFlashBatch(false), 800);
   };
@@ -23,6 +23,7 @@ export default function App() {
 
         .app-nav {
           display: flex;
+          align-items: stretch;
           gap: 0;
           border-bottom: 1px solid rgba(192,122,34,0.1);
           background: rgba(12, 16, 21, 0.98);
@@ -48,20 +49,26 @@ export default function App() {
           align-items: center;
           gap: 7px;
           white-space: nowrap;
+          margin-bottom: -1px;
         }
         .app-tab:hover { color: #c07a22; }
         .app-tab.active {
           color: #c07a22;
           border-bottom-color: #c07a22;
         }
-        .app-tab .tab-icon {
-          font-size: 15px;
-        }
+        .app-tab .tab-icon { font-size: 15px; }
         .app-tab .tab-badge {
           width: 7px; height: 7px; border-radius: 50%;
           background: #4ade80;
           animation: pulse 1.5s ease-in-out infinite;
         }
+        .app-tab.montauk-tab { color: #8a8477; }
+        .app-tab.montauk-tab:hover { color: #C8A84B; }
+        .app-tab.montauk-tab.active {
+          color: #C8A84B;
+          border-bottom-color: #C8A84B;
+        }
+
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(0.75); }
@@ -71,9 +78,10 @@ export default function App() {
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 14px 24px 14px 0;
-          margin-right: 16px;
-          border-right: 1px solid rgba(192,122,34,0.08);
+          padding: 14px 28px 14px 0;
+          margin-right: 8px;
+          border-right: 1px solid rgba(192,122,34,0.1);
+          flex-shrink: 0;
         }
         .app-brand .logo-mark {
           width: 28px; height: 28px;
@@ -84,17 +92,29 @@ export default function App() {
         }
         .app-brand .logo-text {
           font-family: 'Playfair Display', serif;
-          font-size: 14px;
+          font-size: 15px;
           font-weight: 700;
           color: #c07a22;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.3px;
+          line-height: 1;
+        }
+        .app-brand .logo-text span {
+          color: #e8e4d8;
+          font-weight: 400;
         }
         .app-brand .logo-sub {
           font-size: 9px;
           color: #8a8477;
           letter-spacing: 1.5px;
           text-transform: uppercase;
-          margin-top: 1px;
+          margin-top: 2px;
+        }
+
+        .nav-divider {
+          width: 1px;
+          background: rgba(192,122,34,0.08);
+          margin: 12px 8px;
+          flex-shrink: 0;
         }
 
         .app-flash-indicator {
@@ -119,26 +139,24 @@ export default function App() {
 
         @media (max-width: 640px) {
           .app-nav { padding: 0 16px; }
-          .app-brand .logo-text { display: none; }
+          .app-brand .logo-text { font-size: 13px; }
           .app-brand .logo-sub { display: none; }
-          .app-tab { padding: 14px 16px; font-size: 12px; }
+          .app-tab { padding: 14px 14px; font-size: 12px; }
+          .app-tab .tab-icon { display: none; }
         }
       `}</style>
 
-      {/* ── Flash indicator when batch sends to Deal Analyzer ── */}
       {flashBatch && (
-        <div className="app-flash-indicator">
-          ⚡ Property loaded in Deal Analyzer
-        </div>
+        <div className="app-flash-indicator">⚡ Property loaded in Deal Analyzer</div>
       )}
 
-      {/* ── Top nav ── */}
+      {/* ── Nav ── */}
       <nav className="app-nav">
         <div className="app-brand">
-          <div className="logo-mark">🏠</div>
+          <div className="logo-mark">⚡</div>
           <div>
-            <div className="logo-text">Knoxville REI</div>
-            <div className="logo-sub">Deal Tools</div>
+            <div className="logo-text">DealEdge<span>.io</span></div>
+            <div className="logo-sub">AI Deal Tools</div>
           </div>
         </div>
 
@@ -158,9 +176,19 @@ export default function App() {
           <span className="tab-icon">⚡</span>
           Batch Analyzer
         </button>
+
+        <div className="nav-divider" />
+
+        <button
+          className={`app-tab montauk-tab ${activeTab === "montauk" ? "active" : ""}`}
+          onClick={() => setActiveTab("montauk")}
+        >
+          <span className="tab-icon">🏗️</span>
+          Montauk Tools
+        </button>
       </nav>
 
-      {/* ── Tab content ── */}
+      {/* ── Content ── */}
       <div style={{ display: activeTab === "deal" ? "block" : "none" }}>
         <DealAnalyzerV2
           initialData={pendingDealData}
@@ -170,6 +198,10 @@ export default function App() {
 
       <div style={{ display: activeTab === "batch" ? "block" : "none" }}>
         <BatchAnalyzer onRunInDealAnalyzer={handleRunInDealAnalyzer} />
+      </div>
+
+      <div style={{ display: activeTab === "montauk" ? "block" : "none" }}>
+        <MontaukTools />
       </div>
     </div>
   );
