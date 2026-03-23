@@ -1,7 +1,8 @@
 import { useState } from "react";
 import DealAnalyzerV2 from "./DealAnalyzer";
 import BatchAnalyzer from "./BatchAnalyzer";
-import MontaukTools from "./MontaukTools";
+import SellerBot from "./SellerBot";
+import ParcelResearch from "./ParcelResearch";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("deal");
@@ -180,11 +181,19 @@ export default function App() {
         <div className="nav-divider" />
 
         <button
-          className={`app-tab montauk-tab ${activeTab === "montauk" ? "active" : ""}`}
-          onClick={() => setActiveTab("montauk")}
+          className={`app-tab ${activeTab === "seller" ? "active" : ""}`}
+          onClick={() => setActiveTab("seller")}
         >
-          <span className="tab-icon">🏗️</span>
-          Montauk Tools
+          <span className="tab-icon">🏡</span>
+          Seller Intake
+        </button>
+
+        <button
+          className={`app-tab ${activeTab === "parcel" ? "active" : ""}`}
+          onClick={() => setActiveTab("parcel")}
+        >
+          <span className="tab-icon">🌿</span>
+          Parcel Research
         </button>
       </nav>
 
@@ -200,8 +209,12 @@ export default function App() {
         <BatchAnalyzer onRunInDealAnalyzer={handleRunInDealAnalyzer} />
       </div>
 
-      <div style={{ display: activeTab === "montauk" ? "block" : "none" }}>
-        <MontaukTools />
+      <div style={{ display: activeTab === "seller" ? "block" : "none" }}>
+        <SellerBot />
+      </div>
+
+      <div style={{ display: activeTab === "parcel" ? "block" : "none" }}>
+        <ParcelResearch />
       </div>
     </div>
   );

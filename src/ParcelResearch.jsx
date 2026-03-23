@@ -57,30 +57,30 @@ Be specific and useful. Use real knowledge about the area, typical zoning patter
 
 const statusColor = {
   "Low Risk": "#52c77a",
-  "Moderate Risk": "#C8A84B",
+  "Moderate Risk": "#c07a22",
   "High Risk": "#c75252",
   "Unknown": "#6b7a6e",
   "Appreciating": "#52c77a",
-  "Stable": "#C8A84B",
+  "Stable": "#c07a22",
   "Declining": "#c75252",
   "High Potential": "#52c77a",
-  "Moderate Potential": "#C8A84B",
+  "Moderate Potential": "#c07a22",
   "Low Potential": "#c75252",
 };
 
 function Badge({ label, value, color }) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: `${color}15`, border: `1px solid ${color}40`, borderRadius: 2, padding: "3px 10px" }}>
-      {label && <span style={{ fontSize: 10, color: "#6b7a6e", fontFamily: "'IBM Plex Mono',monospace", letterSpacing: 1 }}>{label}</span>}
-      <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: "'Syne',sans-serif" }}>{value}</span>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: `${color}18`, border: `1px solid ${color}40`, borderRadius: 2, padding: "3px 10px", marginRight: 6 }}>
+      {label && <span style={{ fontSize: 10, color: "#8a8477", fontFamily: "'DM Sans',monospace", letterSpacing: 1 }}>{label}</span>}
+      <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: "'DM Sans',sans-serif" }}>{value}</span>
     </div>
   );
 }
 
 function Section({ title, children }) {
   return (
-    <div style={{ background: "#141c15", border: "1px solid #1e2d20", borderRadius: 2, padding: 20 }}>
-      <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, letterSpacing: 2, color: "#C8A84B", textTransform: "uppercase", marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid #1e2d20" }}>
+    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(192,122,34,0.08)", borderRadius: 2, padding: 18 }}>
+      <div style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 10, letterSpacing: 2, color: "#c07a22", textTransform: "uppercase", marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid rgba(192,122,34,0.08)" }}>
         {title}
       </div>
       {children}
@@ -88,21 +88,21 @@ function Section({ title, children }) {
   );
 }
 
-function InfoRow({ label, value, mono }) {
+function InfoRow({ label, value }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 0", borderBottom: "1px solid #1a221b" }}>
-      <span style={{ fontSize: 11, color: "#6b7a6e", fontFamily: "'IBM Plex Mono',monospace", letterSpacing: 1, textTransform: "uppercase", flexShrink: 0, marginRight: 12, paddingTop: 1 }}>{label}</span>
-      <span style={{ fontSize: 13, color: "#e8e4d8", textAlign: "right", fontFamily: mono ? "'IBM Plex Mono',monospace" : "'DM Sans',sans-serif", fontWeight: mono ? 500 : 400 }}>{value || "—"}</span>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+      <span style={{ fontSize: 11, color: "#6b7a6e", fontFamily: "'DM Sans',sans-serif", letterSpacing: 0.5, textTransform: "uppercase", flexShrink: 0, marginRight: 12, paddingTop: 1 }}>{label}</span>
+      <span style={{ fontSize: 13, color: "#c8c4b8", textAlign: "right" }}>{value || "—"}</span>
     </div>
   );
 }
 
-function BulletList({ items, color = "#C8A84B" }) {
+function BulletList({ items, color = "#c07a22" }) {
   if (!items?.length) return <span style={{ fontSize: 13, color: "#6b7a6e", fontStyle: "italic" }}>None identified</span>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {items.map((item, i) => (
-        <div key={i} style={{ display: "flex", gap: 10, fontSize: 13, color: "#e8e4d8", lineHeight: 1.5 }}>
+        <div key={i} style={{ display: "flex", gap: 10, fontSize: 13, color: "#c8c4b8", lineHeight: 1.5 }}>
           <div style={{ width: 5, height: 5, borderRadius: "50%", background: color, marginTop: 7, flexShrink: 0 }} />
           {item}
         </div>
@@ -140,7 +140,7 @@ export default function ParcelResearch() {
   }
 
   const devScore = result?.development_potential?.score;
-  const devColor = devScore >= 7 ? "#52c77a" : devScore >= 4 ? "#C8A84B" : "#c75252";
+  const devColor = devScore >= 7 ? "#52c77a" : devScore >= 4 ? "#c07a22" : "#c75252";
 
   const inputStyle = {
     background: "#141c15",
