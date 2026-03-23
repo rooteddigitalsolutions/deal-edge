@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ParcelResearch from "./ParcelResearch";
 
 // ── Calls the deal-edge CF worker — no API key in the browser ──
 async function callClaude(body) {
@@ -437,11 +438,16 @@ export default function MontaukTools() {
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", opacity: activeTab === "analyzer" ? 1 : 0.4 }} />
           Deal Analyzer
         </button>
+        <button style={tabStyle("parcel")} onClick={() => setActiveTab("parcel")}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", opacity: activeTab === "parcel" ? 1 : 0.4 }} />
+          Parcel Research
+        </button>
       </div>
 
       {/* Panels */}
       {activeTab === "bot" && <SellerBot />}
       {activeTab === "analyzer" && <DealAnalyzer />}
+      {activeTab === "parcel" && <ParcelResearch />}
     </div>
   );
 }
