@@ -16,8 +16,8 @@ crons = ["0 11 * * TUE"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "dealedge"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_name = "leads"
+database_id = "736c4ace-42f4-40b7-817d-05a9871add19"
 
 [observability]
 enabled = true

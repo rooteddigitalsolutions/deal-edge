@@ -115,7 +115,7 @@ async function fetchPostText(url) {
 // ------------------------------------------------------------
 function splitNotices(text) {
   const HEADER_RE =
-    /(NOTICE TO CREDITORS|TRUSTEE'?S NOTICE OF FORECLOSURE SALE|NOTICE OF FORECLOSURE|NOTICE OF SUBSTITUTE TRUSTEE'?S SALE|NOTICE OF SERVICE BY PUBLICATION)/g;
+    /(NOTICE TO CREDITORS|TRUSTEE'?S NOTICE OF FORECLOSURE SALE|NOTICE OF FORECLOSURE|NOTICE OF (SUBSTITUTE )?TRUSTEE'?S SALE|SUBSTITUTE TRUSTEE'?S SALE|NOTICE OF SALE|NOTICE OF SERVICE BY PUBLICATION)/g;
   const indices = [];
   let m;
   while ((m = HEADER_RE.exec(text)) !== null) indices.push(m.index);
