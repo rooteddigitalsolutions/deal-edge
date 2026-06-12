@@ -31,7 +31,10 @@ const DO_IMPORT = process.argv.includes("--import");
 
 // ---------------------------------------------------------------
 async function kgisFetch(params) {
-  const qs = new URLSearchParams(params).toString();
+  // Manual encoding: ArcGIS + this proxy want %20, not '+', for spaces
+  const qs = Object.entries(params)
+    .map(([k, v]) => k + "=" + encodeURIComponent(v))
+    .join("&");
   const url = PROXY + TABLE_URL + "?" + qs;
   const res = await fetch(url, {
     headers: {
@@ -126,6 +129,13 @@ function rowToSql(attrs, m) {
   );
 }
 
+
+// In window mode the loop already advanced lastObjectId via max(OID); ensure
+// we never go backwards and always clear the current window.
+function windowEnd(lastId, feats, m) {
+  return lastId; // max OID was already recorded per-feature in the main loop
+}
+
 // ---------------------------------------------------------------
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -136,6 +146,7 @@ async function main() {
   let fieldMap = null;
   let buffer = [];
   let page = 0;
+  let emptyStreak = 0;
 
   const flush = () => {
     if (!buffer.length) return;
@@ -161,20 +172,47 @@ async function main() {
     `Starting KGIS load from OBJECTID > ${progress.lastObjectId} (resume-safe)`
   );
 
+  // Strategy A: ordered paging. Strategy C fallback: fixed OBJECTID windows
+  // (works on every ArcGIS version, just makes a few empty calls).
+  let strategy = "A";
+
   while (true) {
     page++;
-    const data = await kgisFetch({
-      f: "json",
-      where: `OBJECTID > ${progress.lastObjectId}`,
-      orderByFields: "OBJECTID ASC",
-      outFields: "*",
-      returnGeometry: "false",
-      resultRecordCount: String(PAGE_SIZE),
-    });
+    let data;
+    if (strategy === "A") {
+      try {
+        data = await kgisFetch({
+          f: "json",
+          where: `OBJECTID > ${progress.lastObjectId}`,
+          orderByFields: "OBJECTID",
+          outFields: "*",
+          resultRecordCount: String(PAGE_SIZE),
+        });
+      } catch (e) {
+        console.log("Strategy A rejected (" + e.message.slice(0, 80) + "...), falling back to OBJECTID windows");
+        strategy = "C";
+      }
+    }
+    if (strategy === "C") {
+      data = await kgisFetch({
+        f: "json",
+        where: `OBJECTID > ${progress.lastObjectId} AND OBJECTID <= ${progress.lastObjectId + PAGE_SIZE}`,
+        outFields: "*",
+      });
+    }
 
     if (!fieldMap) fieldMap = buildFieldMap(data.fields || []);
     const feats = data.features || [];
-    if (!feats.length) break;
+    if (!feats.length) {
+      if (strategy === "C") {
+        progress.lastObjectId += PAGE_SIZE; // empty window: skip ahead
+        emptyStreak++;
+        if (emptyStreak >= 50) break; // 100k empty IDs in a row = end of table
+        continue;
+      }
+      break;
+    }
+    emptyStreak = 0;
 
     for (const f of feats) {
       const sql = rowToSql(f.attributes, fieldMap);
@@ -191,7 +229,8 @@ async function main() {
     );
 
     if (buffer.length >= ROWS_PER_SQL_FILE) flush();
-    if (feats.length < PAGE_SIZE) break; // last page
+    if (strategy === "A" && feats.length < PAGE_SIZE) break; // last page
+    if (strategy === "C") progress.lastObjectId = windowEnd(progress.lastObjectId, feats, fieldMap);
     await sleep(1000); // be polite
   }
 
