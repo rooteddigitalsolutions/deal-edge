@@ -1,0 +1,23 @@
+# DealEdge probate-worker
+# Deploy: npx wrangler deploy
+# Secret:  npx wrangler secret put ANTHROPIC_API_KEY
+# DB:      set database_id to your existing DealEdge D1 database
+# Migrate: npx wrangler d1 execute dealedge --remote --file=migrations/0002_probate_notices.sql
+#          (run phase8_schema.sql first if you haven't)
+
+name = "dealedge-probate-worker"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+
+# Knoxville Focus posts the legal notices each Monday.
+# Run Tuesday 11:00 UTC (~6-7am ET) so the post is definitely up.
+[triggers]
+crons = ["0 11 * * TUE"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dealedge"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[observability]
+enabled = true
