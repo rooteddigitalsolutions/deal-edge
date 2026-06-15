@@ -91,15 +91,25 @@ async function pointQuery(layerId, x, y, outFields) {
 }
 
 async function zoningFor(x, y) {
-  // city first, then county fallback
-  let r = await pointQuery(98, x, y, "ZONE1,ZONE_LABEL");
-  let z = (r.features[0] || {}).attributes;
-  if (z && z.ZONE1 && z.ZONE1 !== "ROW") return z.ZONE1;
+  // city first, then county fallback — each wrapped so one failure isn't fatal
+  try {
+    let r = await pointQuery(98, x, y, "ZONE1,ZONE_LABEL");
+    let z = (r.features[0] || {}).attributes;
+    if (z && z.ZONE1 && z.ZONE1 !== "ROW") return z.ZONE1;
+  } catch (e) { if (process.env.DEBUG_URL) console.error("L98 fail:", e.message); }
   await sleep(300);
-  r = await pointQuery(99, x, y, "ZONE1,ZONE_LABEL");
-  z = (r.features[0] || {}).attributes;
-  if (z && z.ZONE1 && z.ZONE1 !== "ROW") return z.ZONE1;
-  return z && z.ZONE1 ? z.ZONE1 : null; // may be ROW or null
+  try {
+    let r = await pointQuery(99, x, y, "ZONE1,ZONE_LABEL");
+    let z = (r.features[0] || {}).attributes;
+    if (z && z.ZONE1 && z.ZONE1 !== "ROW") return z.ZONE1;
+    if (z && z.ZONE1) return z.ZONE1;
+  } catch (e) { if (process.env.DEBUG_URL) console.error("L99 fail:", e.message); }
+  return null;
+}
+
+async function safeOverlay(layerId, x, y) {
+  try { return await overlayFor(layerId, x, y); }
+  catch (e) { if (process.env.DEBUG_URL) console.error(`L${layerId} fail:`, e.message); return []; }
 }
 
 async function overlayFor(layerId, x, y) {
@@ -141,16 +151,19 @@ async function main() {
       const zoning = await zoningFor(x, y);
       await sleep(300);
       const constraints = [];
-      const hp = await overlayFor(76, x, y);
+      const hp = await safeOverlay(76, x, y);
       if (hp.includes("HP")) constraints.push("HP");
       await sleep(300);
-      const flood = await pointQuery(77, x, y, "OVERLAY_TYPE");
-      if (flood.features.length > 0) constraints.push("FLOOD");
+      let floodHit = false;
+      try {
+        const flood = await pointQuery(77, x, y, "OVERLAY_TYPE");
+        floodHit = flood.features.length > 0;
+      } catch (e) { if (process.env.DEBUG_URL) console.error("L77 fail:", e.message); }
+      if (floodHit) constraints.push("FLOOD");
       await sleep(300);
-      const cityOv = await overlayFor(74, x, y);
+      const cityOv = await safeOverlay(74, x, y);
       await sleep(300);
-      let cntyOv = [];
-      try { cntyOv = await overlayFor(80, x, y); } catch (e) { /* layer 80 optional */ }
+      const cntyOv = await safeOverlay(80, x, y);
       for (const o of [...cityOv, ...cntyOv]) {
         if (o && o !== "HP" && !constraints.includes(o)) constraints.push(o);
       }
