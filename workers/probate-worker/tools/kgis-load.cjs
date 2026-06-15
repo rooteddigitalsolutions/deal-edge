@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 /**
- * DealEdge KGIS parcel loader
- * ---------------------------------------------------------------
- * Pages KGIS.VIEW_PARCEL_ADDR_OWNER (QueryTasks table 13) through
- * the KGIS proxy and upserts every Knox County parcel into D1.
+ * DealEdge KGIS parcel loader (v2 — matched to actual table schema)
+ * -----------------------------------------------------------------
+ * Source: KGIS.VIEW_PARCEL_ADDR_OWNER (Maps/QueryTasks/MapServer/13)
+ * Fields: ADDR_ID (OID), PARCELID, ADDRESS_NUM, ADDRESS_NUM_SUF,
+ *         STREET_NAME, UNIT, OWNER, ACTIVE, UNIT_TYPE, OWN_MOD_FLAG
+ * Note:   no mailing address in this view — owner-name matching only;
+ *         absentee detection comes from per-lead enrichment later.
  *
  * Run from workers/probate-worker:
- *   node tools/kgis-load.js              # fetch + generate SQL chunks
- *   node tools/kgis-load.js --import     # ...and import each chunk via wrangler
+ *   node tools/kgis-load.cjs              # fetch + write SQL chunks
+ *   node tools/kgis-load.cjs --import     # ...and import each into D1
  *
- * Resume-safe: keeps progress in tools/.kgis-progress.json
- * Polite: 1 request/second, browser-like headers.
+ * Resume-safe via tools/.kgis-progress.json. Polite: 1 req/sec.
  */
 
 const fs = require("fs");
@@ -57,96 +59,44 @@ async function kgisFetch(params) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---------------------------------------------------------------
-// Field mapping: discover actual field names on first page, then
-// map by pattern so we survive KGIS renames.
-function buildFieldMap(fields) {
-  const names = fields.map((f) => f.name);
-  const pick = (...patterns) => {
-    for (const p of patterns) {
-      const hit = names.find((n) => n.toUpperCase() === p);
-      if (hit) return hit;
-    }
-    for (const p of patterns) {
-      const hit = names.find((n) => n.toUpperCase().includes(p));
-      if (hit) return hit;
-    }
-    return null;
-  };
-  const map = {
-    objectid: pick("OBJECTID", "OID"),
-    parcel_id: pick("PARCELID", "PARCEL_ID", "PIN"),
-    owner: pick("OWNER", "OWNERNAME", "OWNER_NAME"),
-    situs: pick("FULL_ADDRESS", "SITE_ADDR", "PROP_ADDR", "ADDRESS"),
-    own_addr: pick("OWNER_ADDR", "MAIL_ADDR", "CAREOF", "ADDR1"),
-    own_city: pick("OWNER_CITY", "MAIL_CITY", "CITY"),
-    own_state: pick("OWNER_STATE", "MAIL_STATE", "STATE"),
-    own_zip: pick("OWNER_ZIP", "MAIL_ZIP", "ZIP"),
-    landuse: pick("LANDUSE", "LAND_USE", "LUC"),
-  };
-  console.log("Field map:", map);
-  if (!map.parcel_id || !map.owner) {
-    console.error("\nAvailable fields were:", names.join(", "));
-    throw new Error(
-      "Could not find PARCELID/OWNER fields — paste the field list above back into Claude."
-    );
-  }
-  return map;
-}
-
-const normParcel = (s) =>
-  (s || "").toUpperCase().replace(/[\s#.\-]/g, "");
+const normParcel = (s) => (s || "").toUpperCase().replace(/[\s#.\-]/g, "");
 
 const q = (s) =>
-  s === null || s === undefined ? "NULL" : "'" + String(s).replace(/'/g, "''").trim() + "'";
+  s === null || s === undefined || s === ""
+    ? "NULL"
+    : "'" + String(s).replace(/'/g, "''").trim() + "'";
 
-function rowToSql(attrs, m) {
-  const pid = normParcel(attrs[m.parcel_id]);
+function rowToSql(a) {
+  const pid = normParcel(a.PARCELID);
   if (!pid) return null;
-  const mailing =
-    m.own_addr && attrs[m.own_addr]
-      ? [attrs[m.own_addr], m.own_city && attrs[m.own_city], m.own_state && attrs[m.own_state], m.own_zip && attrs[m.own_zip]]
-          .filter(Boolean)
-          .join(", ")
-      : null;
+  if (a.ACTIVE && a.ACTIVE !== "Y") return null; // retired address points
+  const situs = [
+    a.ADDRESS_NUM,
+    a.ADDRESS_NUM_SUF,
+    a.STREET_NAME,
+    a.UNIT ? "UNIT " + a.UNIT : null,
+  ]
+    .filter((x) => x !== null && x !== undefined && x !== "")
+    .join(" ");
   return (
-    `INSERT INTO parcels (parcel_id, situs_address, owner_name_raw, mailing_address, mailing_state, land_use) VALUES (` +
-    [
-      q(pid),
-      q(attrs[m.situs] ?? null),
-      q(attrs[m.owner] ?? null),
-      q(mailing),
-      q(m.own_state ? attrs[m.own_state] ?? null : null),
-      q(m.landuse ? attrs[m.landuse] ?? null : null),
-    ].join(",") +
+    `INSERT INTO parcels (parcel_id, situs_address, owner_name_raw) VALUES (` +
+    [q(pid), q(situs || null), q(a.OWNER ?? null)].join(",") +
     `) ON CONFLICT(parcel_id) DO UPDATE SET ` +
     `situs_address=COALESCE(excluded.situs_address, parcels.situs_address), ` +
     `owner_name_raw=excluded.owner_name_raw, ` +
-    `mailing_address=excluded.mailing_address, ` +
-    `mailing_state=excluded.mailing_state, ` +
-    `land_use=COALESCE(excluded.land_use, parcels.land_use), ` +
     `updated_at=datetime('now');`
   );
-}
-
-
-// In window mode the loop already advanced lastObjectId via max(OID); ensure
-// we never go backwards and always clear the current window.
-function windowEnd(lastId, feats, m) {
-  return lastId; // max OID was already recorded per-feature in the main loop
 }
 
 // ---------------------------------------------------------------
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  let progress = { lastObjectId: 0, fileIndex: 0, total: 0 };
+  let progress = { lastId: 0, fileIndex: 0, total: 0 };
   if (fs.existsSync(PROGRESS_FILE))
     progress = JSON.parse(fs.readFileSync(PROGRESS_FILE, "utf8"));
 
-  let fieldMap = null;
   let buffer = [];
   let page = 0;
-  let emptyStreak = 0;
 
   const flush = () => {
     if (!buffer.length) return;
@@ -168,80 +118,54 @@ async function main() {
     fs.writeFileSync(PROGRESS_FILE, JSON.stringify(progress));
   };
 
-  console.log(
-    `Starting KGIS load from OBJECTID > ${progress.lastObjectId} (resume-safe)`
-  );
-
-  // Strategy A: ordered paging. Strategy C fallback: fixed OBJECTID windows
-  // (works on every ArcGIS version, just makes a few empty calls).
-  let strategy = "A";
+  console.log(`Starting KGIS load from ADDR_ID > ${progress.lastId} (resume-safe)`);
 
   while (true) {
     page++;
-    let data;
-    if (strategy === "A") {
-      try {
-        data = await kgisFetch({
-          f: "json",
-          where: `OBJECTID > ${progress.lastObjectId}`,
-          orderByFields: "OBJECTID",
-          outFields: "*",
-          resultRecordCount: String(PAGE_SIZE),
-        });
-      } catch (e) {
-        console.log("Strategy A rejected (" + e.message.slice(0, 80) + "...), falling back to OBJECTID windows");
-        strategy = "C";
-      }
-    }
-    if (strategy === "C") {
-      data = await kgisFetch({
-        f: "json",
-        where: `OBJECTID > ${progress.lastObjectId} AND OBJECTID <= ${progress.lastObjectId + PAGE_SIZE}`,
-        outFields: "*",
-      });
-    }
+    const data = await kgisFetch({
+      f: "json",
+      where: `ADDR_ID > ${progress.lastId}`,
+      orderByFields: "ADDR_ID",
+      outFields: "*",
+      resultRecordCount: String(PAGE_SIZE),
+    });
 
-    if (!fieldMap) fieldMap = buildFieldMap(data.fields || []);
     const feats = data.features || [];
-    if (!feats.length) {
-      if (strategy === "C") {
-        progress.lastObjectId += PAGE_SIZE; // empty window: skip ahead
-        emptyStreak++;
-        if (emptyStreak >= 50) break; // 100k empty IDs in a row = end of table
-        continue;
-      }
-      break;
-    }
-    emptyStreak = 0;
+    if (!feats.length) break;
 
     for (const f of feats) {
-      const sql = rowToSql(f.attributes, fieldMap);
+      const sql = rowToSql(f.attributes);
       if (sql) {
         buffer.push(sql);
         progress.total++;
       }
-      const oid = f.attributes[fieldMap.objectid];
-      if (oid > progress.lastObjectId) progress.lastObjectId = oid;
+      if (f.attributes.ADDR_ID > progress.lastId)
+        progress.lastId = f.attributes.ADDR_ID;
     }
 
     console.log(
-      `page ${page}: +${feats.length} rows (total ${progress.total}, lastOID ${progress.lastObjectId})`
+      `page ${page}: +${feats.length} rows (kept ${progress.total}, lastId ${progress.lastId})`
     );
 
     if (buffer.length >= ROWS_PER_SQL_FILE) flush();
-    if (strategy === "A" && feats.length < PAGE_SIZE) break; // last page
-    if (strategy === "C") progress.lastObjectId = windowEnd(progress.lastObjectId, feats, fieldMap);
+    if (feats.length < PAGE_SIZE) break; // last page
     await sleep(1000); // be polite
   }
 
   flush();
   fs.writeFileSync(PROGRESS_FILE, JSON.stringify(progress));
-  console.log(`\nDone. ${progress.total} parcels across ${progress.fileIndex} SQL files in tools/kgis_sql/`);
+  console.log(
+    `\nDone. ${progress.total} address/owner rows across ${progress.fileIndex} SQL files in tools/kgis_sql/`
+  );
   if (!DO_IMPORT) {
-    console.log(`\nTo import, either re-run with --import, or run for each file:`);
-    console.log(`  npx wrangler d1 execute ${DB_NAME} --remote --yes --file=tools/kgis_sql/parcels_001.sql`);
+    console.log(`\nTo import, re-run with --import, or per file:`);
+    console.log(
+      `  npx wrangler d1 execute ${DB_NAME} --remote --yes --file=tools/kgis_sql/parcels_001.sql`
+    );
   } else {
-    console.log(`All chunks imported. Now hit your worker's /run URL to sweep pending notices against the loaded parcels.`);
+    console.log(
+      `All chunks imported. Now hit your worker's /run URL to sweep the 36 pending notices against the loaded parcels.`
+    );
   }
 }
 
