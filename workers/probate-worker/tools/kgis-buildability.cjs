@@ -149,7 +149,8 @@ async function main() {
       await sleep(300);
       const cityOv = await overlayFor(74, x, y);
       await sleep(300);
-      const cntyOv = await overlayFor(80, x, y);
+      let cntyOv = [];
+      try { cntyOv = await overlayFor(80, x, y); } catch (e) { /* layer 80 optional */ }
       for (const o of [...cityOv, ...cntyOv]) {
         if (o && o !== "HP" && !constraints.includes(o)) constraints.push(o);
       }
