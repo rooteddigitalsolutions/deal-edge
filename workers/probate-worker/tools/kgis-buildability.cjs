@@ -45,6 +45,7 @@ const FILTER_SANITY_MAX = 5;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function kfetch(url) {
+  if (process.env.DEBUG_URL) console.error("FETCH:", url);
   const res = await fetch(url, {
     headers: {
       Referer: REFERER,
@@ -61,7 +62,9 @@ async function kfetch(url) {
 
 // centroid of the parcel polygon (average of outer ring vertices)
 async function centroid(parcelId) {
-  const url = `${PROXY}${GS}?where=${encodeURIComponent(`PARCELID='${parcelId}'`)}&returnGeometry=true&outFields=PARCELID&f=json`;
+  // Raw, un-encoded where clause — matches the curl that works. Encoding the
+  // quotes/equals trips the proxy.
+  const url = `${PROXY}${GS}?where=PARCELID='${parcelId}'&returnGeometry=true&outFields=PARCELID&f=json`;
   const j = await kfetch(url);
   const f = (j.features || [])[0];
   if (!f || !f.geometry || !f.geometry.rings) return null;
@@ -72,11 +75,14 @@ async function centroid(parcelId) {
 
 // spatial point query against a layer; returns {features, filtered}
 async function pointQuery(layerId, x, y, outFields) {
+  // Round to whole feet — high-precision decimals and encoded commas both
+  // trip the proxy. Bare "x,y" with an un-encoded comma is what works.
+  const gx = Math.round(x), gy = Math.round(y);
   const url =
-    `${PROXY}${ZON}/${layerId}/query?geometry=${x},${y}` +
+    `${PROXY}${ZON}/${layerId}/query?geometry=${gx},${gy}` +
     `&geometryType=esriGeometryPoint&inSR=${SR}` +
     `&spatialRel=esriSpatialRelIntersects` +
-    `&outFields=${encodeURIComponent(outFields)}&returnGeometry=false&f=json`;
+    `&outFields=${outFields}&returnGeometry=false&f=json`;
   const j = await kfetch(url);
   const feats = j.features || [];
   // GUARD: too many features = filter didn't apply -> not trustworthy
