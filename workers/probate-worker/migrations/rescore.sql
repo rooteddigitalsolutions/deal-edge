@@ -1,24 +1,7 @@
--- Migration 0004: three-horizon scoring
--- Replaces the single biased motivation score with three independent
--- 0-100 scores per parcel: flip (short), brrrr (mid), hold (long).
--- Strategy-neutral: vacant_land is a TAG, not a score booster. Each
--- horizon weights the same underlying facts differently.
---
--- Run: npx wrangler d1 execute leads --remote --file=migrations/0004_three_horizon.sql
--- Re-runnable: recompute by re-executing the INSERT...SELECT at the bottom.
+-- DealEdge: recompute three-horizon scores (re-runnable, no schema changes)
+-- Run anytime to rescore after new signals or enrichment:
+--   npx wrangler d1 execute leads --remote --file=migrations/rescore.sql
 
--- ---------------------------------------------------------------
--- 1. Scores table gets three columns (keep old 'motivation' for ref)
--- ---------------------------------------------------------------
-ALTER TABLE scores ADD COLUMN flip_score REAL;
-ALTER TABLE scores ADD COLUMN brrrr_score REAL;
-ALTER TABLE scores ADD COLUMN hold_score REAL;
-ALTER TABLE scores ADD COLUMN property_type TEXT;   -- 'house' | 'vacant' | 'other'
-ALTER TABLE scores ADD COLUMN flags TEXT;            -- neutral tags: 'foreclosure,out_of_state,single_owner'
-
--- ---------------------------------------------------------------
--- 2. Per-parcel feature view: extract the neutral facts each score reads
--- ---------------------------------------------------------------
 DROP VIEW IF EXISTS v_parcel_features;
 CREATE VIEW v_parcel_features AS
 SELECT
